@@ -1,3 +1,5 @@
+> Run commands below from the **capture root**, not from this camera subfolder. Shared motion/LED settings are in `../tracking_common.py`. See [current run guide](../RUN_COMMANDS.md).
+
 # Automatic nozzle tracker
 
 `auto_nozzle_tracker.py` is separate from the original `nozzle_grid_tracker.py`.
@@ -6,7 +8,7 @@ Install dependencies with `python -m pip install -r capture/requirements.txt`.
 From the project directory:
 
 ```sh
-python capture/auto_nozzle_tracker.py \
+python upward_camera/auto_nozzle_tracker.py \
   --input 0 \
   --hsv-low 0,0,50 --hsv-high 179,60,255 \
   --bed-width 800 --bed-height 800 \
@@ -74,7 +76,7 @@ errors. Set the physical dimensions from the pins, not nominal bed dimensions.
 
 ## Dated capture folders
 
-Each run saves its files in `capture/captures/YYYY-MM-DD/HH-MM-SS_microseconds/`.
+Each run saves its files in `capture/captures/upward_camera/auto_bed_view/YYYY-MM-DD/HH-MM-SS_microseconds/`.
 The default location is beside the script, independent of your terminal folder.
 Use `--save-dir /path/to/captures` to choose a different root. `--output`, `--csv`,
 and `--gcode` specify filenames inside the run folder; any directory portions
@@ -87,7 +89,7 @@ and homography. Existing captures are left in place.
 From inside the `capture` directory:
 
 ```bash
-python auto_nozzle_tracker.py \
+python upward_camera/auto_nozzle_tracker.py \
   --input 0 \
   --output annotated.mp4 \
   --csv trajectory.csv \

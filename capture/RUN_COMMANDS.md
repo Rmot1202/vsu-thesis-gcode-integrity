@@ -1,180 +1,65 @@
-# Nozzle tracker run commands
+# Camera-specific nozzle trackers
 
-Run these commands in a terminal from the project folder.
-
-## Setup
+Run commands from this `capture` directory with the existing environment active:
 
 ```bash
-cd /Users/RavenMott1/Desktop/Thesis/code
-source capture/.venv/bin/activate
-python -m pip install -r capture/requirements.txt
+source .venv/bin/activate
 ```
 
-If the virtual environment does not exist, create it first:
+| Camera position | Script | Purpose | Default output root |
+| --- | --- | --- | --- |
+| Upward / angled bed view | `upward_camera/nozzle_grid_tracker.py` | Black fiducials, bed XY, CSRT/LED tracking | `captures/upward_camera/bed_view/` |
+| Upward / angled bed view, alternative | `upward_camera/auto_nozzle_tracker.py` | HSV pin detection and automatic acquisition | `captures/upward_camera/auto_bed_view/` |
+| Sideward view | `side_camera/side_nozzle_tracker.py` | Side-plane/pixel tracking, yellow labels and LEDs | `captures/side_camera/` |
+
+“Upward” is the name for your original angled camera setup; it must still see
+well-separated bed markers. It is not a claim that a camera looking straight
+up or along the bed can use the same calibration.
+
+## Upward camera: printed black fiducials
 
 ```bash
-cd /Users/RavenMott1/Desktop/Thesis/code
-python3 -m venv capture/.venv
-source capture/.venv/bin/activate
-python -m pip install -r capture/requirements.txt
+python upward_camera/nozzle_grid_tracker.py
 ```
 
-## Webcam: automatic tracking
+Press S to select the head. Motion starts recording automatically. V stops and
+disarms automatic restart; A re-arms; Q quits. Calibration and two/three-marker
+fallback operate as before. See [fiducial guide](upward_camera/CUSTOM_FIDUCIALS.md).
+
+## Sideward camera
 
 ```bash
-python capture/auto_nozzle_tracker.py \
-  --input 0 \
-  --hsv-low 0,0,50 \
-  --hsv-high 179,60,255 \
-  --bed-width 800 \
-  --bed-height 800 \
-  --output capture/captures/auto_annotated.mp4 \
-  --csv capture/captures/auto_trajectory.csv
+python side_camera/side_nozzle_tracker.py --input 0
 ```
 
-The default HSV range targets silver pins: any hue, saturation 0–60, and
-brightness 50–255. These are starting values; tune them for your lighting.
-Bright silver reflections are included. For darker pins, try
-`--hsv-low 0,0,25`. Other gray printer parts can also pass this color filter;
-the detector additionally filters blob size, circularity, and four-pin geometry.
-Use `--input 1` to try another webcam.
+Press S, select the head including both yellow labels, SHIFT-click the tip,
+then SPACE to resume. Movement starts recording automatically. V stops; A
+re-arms; Q quits. See [side guide](side_camera/SIDE_VIEW.md).
+Side-view coordinates are not printer bed XY or depth measurements.
 
-## Webcam: also export G-code
-
-Replace `220` with the actual horizontal and vertical pin spacing measured
-center-to-center in millimeters.
+## Alternative upward-camera tracker
 
 ```bash
-python capture/auto_nozzle_tracker.py \
-  --input 0 \
-  --hsv-low 0,0,50 \
-  --hsv-high 179,60,255 \
-  --output capture/captures/auto_annotated.mp4 \
-  --csv capture/captures/auto_trajectory.csv \
-  --gcode capture/captures/auto_trajectory.gcode \
-  --pin-width-mm 220 \
-  --pin-height-mm 220 \
-  --feedrate 1200
+python upward_camera/auto_nozzle_tracker.py --input 0 --csv trajectory.csv
 ```
 
-G-code contains XY moves only, with no Z or extrusion. Its origin is the
-bottom-left pin. Review calibration, machine origin, clearance, and travel
-across tracking gaps before executing it. Feed rate is configured, not recovered
-from video.
+This alternative records processed frames immediately. It uses HSV pins rather
+than the custom black-block detector. Optional XY-only G-code requires measured
+pin spacing; see [automatic tracker guide](upward_camera/AUTO_TRACKER.md).
 
-## Recorded video
+## Shared files and outputs
 
-Replace the input path with your video file.
+`tracking_common.py` contains shared CSRT creation, LED detection, and motion
+trigger settings. `requirements.txt` and `.venv/` remain at this root. Install
+requirements with `python -m pip install -r requirements.txt` if needed.
+Neither camera folder imports the other camera's tracker.
 
-```bash
-python capture/auto_nozzle_tracker.py \
-  --input "/path/to/printer_video.mp4" \
-  --output capture/captures/video_annotated.mp4 \
-  --csv capture/captures/video_trajectory.csv
-```
+Recordings have dated session subfolders. Filenames remain `side_*`, `bed_*`,
+or `auto_bed_*`, and new CSV/JSON data retains the `view_mode` field. Path defaults
+are anchored to this capture root, regardless of terminal working directory.
+`--save-dir` overrides still apply where supported.
 
-## Select the nozzle manually in the original view
-
-```bash
-python capture/auto_nozzle_tracker.py \
-  --input 0 \
-  --manual \
-  --output capture/captures/manual_annotated.mp4 \
-  --csv capture/captures/manual_trajectory.csv
-```
-
-Drag a box around the nozzle on the left video panel. No separate ROI window
-opens. Pin detection stays automatic.
-
-## Automatic acquisition using a nozzle template
-
-Provide a tightly cropped nozzle image at the same camera scale.
-
-```bash
-python capture/auto_nozzle_tracker.py \
-  --input 0 \
-  --template "/path/to/nozzle_template.png" \
-  --output capture/captures/template_annotated.mp4 \
-  --csv capture/captures/template_trajectory.csv
-```
-
-## Process a recording without a window
-
-Replace the ROI values with the nozzle bounding box in the first frame:
-`X Y WIDTH HEIGHT`, in original-image pixels.
-
-```bash
-python capture/auto_nozzle_tracker.py \
-  --input "/path/to/printer_video.mp4" \
-  --headless \
-  --roi 185 215 42 52 \
-  --output capture/captures/headless_annotated.mp4 \
-  --csv capture/captures/headless_trajectory.csv
-```
-
-## Controls
-
-- Drag on the original video: select or correct the nozzle ROI.
-- `R`: pause for selection.
-- `SPACE`: pause or resume.
-- `A`: retry automatic nozzle acquisition.
-- `Q`: quit and close output files.
-
-Motion-based automatic acquisition can confuse other moving objects with the
-nozzle. Check the selected box and correct it by dragging when needed.
-Each run gets a new dated folder, so previous runs are preserved.
-
-## List all options
-
-```bash
-python capture/auto_nozzle_tracker.py --help
-```
-
-The new script detects its own pins; it does not load the old tracker's
-`calibration_*.json` files. See [AUTO_TRACKER.md](AUTO_TRACKER.md) for calibration
-and coordinate details.
-
-## Dated capture folders
-
-Each run saves its files in `capture/captures/YYYY-MM-DD/HH-MM-SS_microseconds/`.
-The default location is beside the script, independent of your terminal folder.
-Use `--save-dir /path/to/captures` to choose a different root. `--output`, `--csv`,
-and `--gcode` specify filenames inside the run folder; any directory portions
-in those arguments are ignored. CSV and G-code remain optional.
-
-Each folder also contains `run.json` with start/end timestamps, run settings,
-processed frame count, completion status, and the last accepted pin positions
-and homography. Existing captures are left in place.
-
-From inside the `capture` directory:
-
-```bash
-python auto_nozzle_tracker.py \
-  --input 0 \
-  --output annotated.mp4 \
-  --csv trajectory.csv \
-  --gcode trajectory.gcode \
-  --pin-width-mm 220 \
-  --pin-height-mm 220
-```
-
-Replace the dimensions with your measured pin spacing.
-
-## Tip outside the tracking box or at rest
-
-The CSRT box may track a stable part of the print head while the tip extends
-outside it. The tip search now extends around its anchor beyond the box edges.
-An anchor outside the camera image produces no tip coordinate.
-
-1. Drag a box around a stable visible part of the print head.
-2. Press SPACE to pause at a clear frame, including the resting position.
-3. Hold SHIFT and click the actual tip in the left video panel. The tip may be
-   outside the tracking box. This sets its position relative to that box.
-4. Press SPACE to resume. Repeat after changing the ROI if necessary.
-
-For example, `--tip-anchor 0.5 1.2` places the search below the box at 120% of
-its height. The selected anchor is printed in the terminal and saved as
-`final_tip_anchor` in `run.json`. Local refinement can shift the point slightly
-from the click. The offset assumes a fixed relationship between the tracked
-head and tip; it cannot recover a tip hidden behind an object. Motion-based
-acquisition needs movement, so manually select the head if it starts at rest.
+Existing recordings identified by calibration metadata are moved into their
+matching camera output tree without changing video or CSV contents. Unidentified
+old recordings stay in their original locations under `captures/` and should
+be treated as legacy/unclassified data. No recordings are deleted.

@@ -1,3 +1,5 @@
+> Run commands below from the **capture root**, not from this camera subfolder. Shared motion/LED settings are in `../tracking_common.py`. See [current run guide](../RUN_COMMANDS.md).
+
 # Nozzle tracker: purpose and code explanation
 
 ## Purpose
@@ -32,7 +34,7 @@ For each source frame, the script:
 
 Only OpenCV and NumPy are required beyond Python's standard library. CSRT
 requires `opencv-contrib-python`; dependencies are listed in
-[requirements.txt](requirements.txt).
+[requirements.txt](../requirements.txt).
 
 ## How pin detection works
 
@@ -271,7 +273,7 @@ exports. That does not establish real-world measurement accuracy. Assess the
 selected pins and nozzle visually, then compare exported distances with known
 movements before using the data for quantitative conclusions.
 
-For copy-and-paste commands, see [RUN_COMMANDS.md](RUN_COMMANDS.md). For a shorter
+For copy-and-paste commands, see [RUN_COMMANDS.md](../RUN_COMMANDS.md). For a shorter
 operating guide, see [AUTO_TRACKER.md](AUTO_TRACKER.md).
 
 ## Tip outside the tracking box or at rest

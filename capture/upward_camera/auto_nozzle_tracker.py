@@ -18,6 +18,12 @@ import math
 from collections import deque
 from pathlib import Path
 
+# Support direct execution from any working directory; shared code is in capture/.
+import sys
+CAPTURE_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(CAPTURE_ROOT))
+from tracking_common import create_tracker as create_shared_tracker
+
 import cv2
 import numpy as np
 
@@ -143,12 +149,7 @@ def clip_box(box, shape):
 
 
 def create_tracker():
-    factory = getattr(cv2, 'TrackerCSRT_create', None)
-    if factory is None:
-        factory = getattr(getattr(cv2, 'legacy', None), 'TrackerCSRT_create', None)
-    if factory is None:
-        raise RuntimeError('CSRT requires opencv-contrib-python; remove conflicting OpenCV packages.')
-    return factory()
+    return create_shared_tracker('CSRT')
 
 
 def refine_tip(frame, box, fraction):
@@ -355,7 +356,7 @@ class GCodeWriter:
 def parse_args(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('--input', default='0', help='Video path or webcam index (default 0)')
-    parser.add_argument('--save-dir', default=str(Path(__file__).resolve().parent / 'captures'),
+    parser.add_argument('--save-dir', default=str(CAPTURE_ROOT / 'captures' / 'upward_camera' / 'auto_bed_view'),
                         help='Root for dated run folders (default: captures beside this script)')
     parser.add_argument('--output', default='annotated.mp4', help='Video filename within the run folder')
     parser.add_argument('--csv', help='Optional CSV filename within the run folder')
@@ -398,8 +399,9 @@ def parse_args(argv=None):
     if args.hsv_low[1] > args.hsv_high[1] or args.hsv_low[2] > args.hsv_high[2]:
         parser.error('HSV saturation/value lower limits must not exceed upper limits')
     names = [Path(p).name for p in (args.output, args.csv, args.gcode) if p]
-    if len(set(names)) != len(names) or any(name in ('run.json', '.', '..', '') for name in names):
-        parser.error('Output filenames must be distinct and cannot be run.json')
+    names = [name if name.startswith('auto_bed_') else 'auto_bed_' + name for name in names]
+    if len(set(names)) != len(names) or any(name in ('auto_bed_run.json', '.', '..', '') for name in names):
+        parser.error('Output filenames must be distinct and cannot be auto_bed_run.json')
     return args
 
 
@@ -422,10 +424,13 @@ def create_run_folder(args):
     for field in ('output', 'csv', 'gcode'):
         value = getattr(args, field)
         if value:
-            setattr(args, field, str(folder / Path(value).name))
-    metadata = {'started_at': started.isoformat(), 'status': 'recording',
+            name = Path(value).name
+            if not name.startswith('auto_bed_'):
+                name = 'auto_bed_' + name
+            setattr(args, field, str(folder / name))
+    metadata = {'view_mode': 'auto_bed_view', 'script': 'auto_nozzle_tracker.py', 'started_at': started.isoformat(), 'status': 'recording',
                 'settings': vars(args).copy(), 'frames_processed': 0}
-    (folder / 'run.json').write_text(json.dumps(metadata, indent=2) + '\n')
+    (folder / 'auto_bed_run.json').write_text(json.dumps(metadata, indent=2) + '\n')
     print(f'Saving capture to: {folder}', flush=True)
     return folder, metadata
 
@@ -452,7 +457,7 @@ def main(argv=None):
         if args.csv:
             csv_handle = open(args.csv, 'w', newline='')
             csv_writer = csv.writer(csv_handle)
-            csv_writer.writerow(['frame_index', 'image_x', 'image_y', 'bed_x', 'bed_y', 'homography_valid', 'tracker_valid'])
+            csv_writer.writerow(['frame_index', 'image_x', 'image_y', 'bed_x', 'bed_y', 'homography_valid', 'tracker_valid', 'view_mode'])
         gcode_writer = None
         if args.gcode:
             gcode_handle = open(args.gcode, 'w')
@@ -544,7 +549,7 @@ def main(argv=None):
                     raise RuntimeError(f'Cannot create output video: {args.output}')
             writer.write(cv2.copyMakeBorder(canvas, 0, video_size[1] - canvas.shape[0], 0, video_size[0] - canvas.shape[1], cv2.BORDER_CONSTANT))
             if csv_writer:
-                csv_writer.writerow([count, *(tip if tip is not None else ('', '')), *(smoothed if smoothed is not None else ('', '')), int(calibration.matrix is not None), int(tip is not None)])
+                csv_writer.writerow([count, *(tip if tip is not None else ('', '')), *(smoothed if smoothed is not None else ('', '')), int(calibration.matrix is not None), int(tip is not None), 'auto_bed_view'])
             if gcode_writer:
                 gcode_writer.write(smoothed, count)
             count += 1
@@ -571,7 +576,7 @@ def main(argv=None):
                 metadata['final_tip_anchor'] = list(args.tip_anchor)
                 metadata['last_pin_centers'] = calibration.points.tolist() if calibration.points is not None else None
                 metadata['last_homography'] = calibration.matrix.tolist() if calibration.matrix is not None else None
-            (run_folder / 'run.json').write_text(json.dumps(metadata, indent=2) + '\n')
+            (run_folder / 'auto_bed_run.json').write_text(json.dumps(metadata, indent=2) + '\n')
 
 
 if __name__ == '__main__':

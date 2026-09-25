@@ -1,0 +1,62 @@
+{
+  "recording_trigger": "nozzle_movement",
+  "occlusion_max_seconds": 5.0,
+  "led_tracking_enabled": true,
+  "movement_threshold_px": 5.0,
+  "movement_confirm_frames": 3,
+  "bed_size_mm": [
+    230.0,
+    190.0
+  ],
+  "marker_order": [
+    "FL",
+    "FR",
+    "RR",
+    "RL"
+  ],
+  "marker_locations_mm": [
+    [
+      6.0,
+      6.0
+    ],
+    [
+      206.0,
+      6.0
+    ],
+    [
+      206.0,
+      166.0
+    ],
+    [
+      6.0,
+      166.0
+    ]
+  ],
+  "image_corner_labels_TL_TR_BR_BL": [
+    "RL",
+    "RR",
+    "FR",
+    "FL"
+  ],
+  "marker_size_mm": 18.0,
+  "black_threshold": 85,
+  "reference_points_image_px": [
+    [
+      682.4695434570312,
+      389.6174011230469
+    ],
+    [
+      853.6451416015625,
+      291.89862060546875
+    ],
+    [
+      726.1428833007812,
+      74.53571319580078
+    ],
+    [
+      551.5,
+      180.5
+    ]
+  ],
+  "note": "XY on marker plane only; each CSV row stores its current homography."
+}

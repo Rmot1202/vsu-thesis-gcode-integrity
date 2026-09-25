@@ -1,0 +1,16 @@
+{
+  "view_mode": "side_view",
+  "script": "side_nozzle_tracker.py",
+  "recording_trigger": "nozzle_movement",
+  "started_at": "2026-09-25T17:46:39.551308-04:00",
+  "input": "0",
+  "reference_dimensions_mm": [
+    null,
+    null
+  ],
+  "coordinate_system": "Side plane, bottom-left reference origin; NOT bed XY or Z gap",
+  "tip_fraction": [
+    0.33496332518337407,
+    1.029940119760479
+  ]
+}
