@@ -4,8 +4,8 @@
 
 # Separate side-view tracker
 
-`side_nozzle_tracker.py` leaves both existing trackers unchanged. It imports
-CSRT, LED assistance, and motion-trigger helpers from `../tracking_common.py` at the capture root. No YOLO is used.
+`side_nozzle_tracker.py` tracks a selected red strip across the full frame and
+uses the shared movement-trigger helper. No ROI or trained model is used.
 
 From the `capture` directory with the existing virtual environment active:
 
@@ -13,13 +13,11 @@ From the `capture` directory with the existing virtual environment active:
 python side_camera/side_nozzle_tracker.py --input 0
 ```
 
-Use `--input /path/to/video.mp4` for a recording, or `--no-led` to disable light
-assistance. Frame coordinates are reported immediately after selecting the head.
+Use `--input /path/to/video.mp4` for a recording.
 
-1. Press S and draw a box around the head, including its lights. Press ENTER.
-2. The view pauses. SHIFT-click the visible physical nozzle tip; it can be
-   outside the head box. This adjusts the box-relative tip offset.
-3. Press SPACE to resume. Confirm the magenta tip marker follows the tip.
+1. Left-click the red strip anywhere in the camera image.
+2. SHIFT-click the physical nozzle tip to calibrate its offset from the strip.
+3. Confirm the red outline and magenta tip marker follow the strip and nozzle.
 4. Nozzle motion triggers recording using the existing 5-pixel/3-frame rule.
 5. V starts/stops recording; stopping disarms automatic restart. A re-arms it.
    Q quits. SPACE pauses/resumes. Paused frames are not duplicated in outputs.
@@ -61,14 +59,17 @@ video includes only processed unpaused frames.
 
 ## Red head-strip assistance
 
-Red-strip assistance is enabled by default and takes priority over the red/blue
-LEDs when it finds a unique match. Put one short, wide,
-matte-red rectangle on a fixed, cool part of the head housing, visible inside
-the selected ROI. After selecting the head with S, SHIFT-click the physical
-nozzle tip once. The strip-to-tip offset is learned from the strip in that ROI;
-the red outline and `RED_STRIP` status show when it is supplying the tip
-estimate. Use `--no-red-strip` to turn it off. The strip tracker uses a large,
-wide-rectangle filter to distinguish the marker from the smaller red LED.
+Red-strip tracking is enabled by default and searches the full camera frame.
+Use one short, wide, matte-red rectangle on a fixed, cool part of the head.
+Left-click near the strip, then SHIFT-click the physical nozzle tip. The click
+snaps to the nearest clearly distinct red rectangle within 100 pixels. Before
+calibration, red candidate outlines labeled R1, R2, etc. and their count are
+shown; the click should be near the strip center. The red outline and
+`RED_STRIP` status show when the strip supplies the tip estimate.
+No head ROI is needed. Use `--no-red-strip` to turn tracking off. The strip
+tracker uses a wide-rectangle filter to reject small red LEDs and follows the
+candidate near the strip's previous position to avoid switching to other red
+objects.
 
 Tune color, shape, and tracking limits near the top of
 `side_nozzle_tracker.py`: `RED_STRIP_HSV_LOW_1` / `RED_STRIP_HSV_HIGH_1` and
@@ -77,9 +78,11 @@ OpenCV's hue scale (defaults H=0–10 and 170–179, S=70–255, V=60–255).
 `RED_STRIP_MIN_AREA` / `RED_STRIP_MAX_AREA` set contour size;
 `RED_STRIP_MIN_ASPECT_RATIO` rejects shapes that are not wide rectangles;
 `RED_STRIP_SEARCH_RADIUS_PX` limits the match around the predicted strip
-position; and `RED_STRIP_MAX_WITHOUT_CSRT_FRAMES` limits fallback duration. If
-multiple similar red rectangles appear in the ROI at
-initialization or near the predicted position, the tracker rejects the match.
+position; `RED_STRIP_SELECTION_RADIUS_PX` sets how close the first click must
+be to the strip; `RED_STRIP_SELECTION_AMBIGUITY_PX` rejects equally close
+candidates; and `RED_STRIP_MAX_LOST_FRAMES` sets how long it tolerates occlusion
+before requiring a new two-click calibration. If the candidate count is zero,
+adjust the HSV, area, or aspect-ratio limits for the camera image.
 
 The strip estimates the tip using a fixed pixel offset. It does not measure
 depth, compensate for perspective changes, or determine printer bed X–Y. The
@@ -90,7 +93,7 @@ a replacement for bed fiducials.
 
 ## Automatic start and post-record processing
 
-Auto-start is armed at launch. Select the head, set the tip and resume.
+Auto-start is armed at launch. Select the strip, set the tip and resume.
 Five pixels of motion for three valid frames starts recording. V stops and
 disarms; A re-arms. Q exits. After stop, the terminal asks for reference G-code;
 press Enter to leave comparison pending. Multiple recordings become separate

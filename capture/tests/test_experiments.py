@@ -68,14 +68,23 @@ class ExperimentTests(unittest.TestCase):
         tracker=RedStripTracker()
         frame=np.zeros((120,160,3),np.uint8)
         cv2.rectangle(frame,(30,30),(70,45),(0,0,255),-1)
-        box=(20,20,80,60);tip=np.array([50.,70.])
-        initial=tracker.update(frame,box,tip)
-        np.testing.assert_allclose(initial,tip)
+        cv2.rectangle(frame,(120,30),(150,45),(0,0,255),-1)
+        tip=np.array([50.,70.])
+        self.assertTrue(tracker.calibrate(frame,[65.,37.5],tip))
+        np.testing.assert_allclose(tracker.update(frame),tip)
         moved_hsv=np.zeros((120,160,3),np.uint8)
         cv2.rectangle(moved_hsv,(40,35),(80,50),(175,255,255),-1)
+        cv2.rectangle(moved_hsv,(120,30),(150,45),(175,255,255),-1)
         moved=cv2.cvtColor(moved_hsv,cv2.COLOR_HSV2BGR)
-        estimated=tracker.update(moved,None,None)
+        estimated=tracker.update(moved)
         np.testing.assert_allclose(estimated,[60.,75.])
+
+    def test_red_strip_calibration_reports_missing_candidates(self):
+        tracker=RedStripTracker()
+        frame=np.zeros((120,160,3),np.uint8)
+        self.assertFalse(tracker.calibrate(frame,[50.,40.],[50.,70.]))
+        self.assertIn('No red rectangle candidates',tracker.selection_error)
+
     def test_recorders_end_to_end(self):
         # Real video capture/writers; only user interaction and ROI selection are simulated.
         video=self.root/'input.mp4'
