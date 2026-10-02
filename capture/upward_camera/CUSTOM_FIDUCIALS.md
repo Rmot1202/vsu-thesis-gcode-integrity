@@ -1,3 +1,5 @@
+> **Current workflow:** Use [../RUN_COMMANDS.md](../RUN_COMMANDS.md). New recordings are permanent `runs/{view}_{date}_{time}/` experiments with `raw_video.mp4`, `annotated_video.mp4`, `trajectory.csv`, and `metadata.json`. After recording, answer the reference prompt in the terminal; analysis is saved in the same folder. Shared lifecycle code is `../experiment_log.py`.
+
 > Run commands below from the **capture root**, not from this camera subfolder. Shared motion/LED settings are in `../tracking_common.py`. See [current run guide](../RUN_COMMANDS.md).
 
 # Custom black fiducial calibration
@@ -80,11 +82,13 @@ position or nozzle parallax correction is inferred.
 - `d`: toggle the diagnostic mask.
 - `q`: quit and release output files.
 
-Recordings go into `captures/YYYY-MM-DD/HH-MM-SS_microseconds/` and contain
-`annotated.mp4`, `grid.mp4`, `trajectory.csv`, and `calibration.json`. CSV rows
+Recordings go into `runs/up_view_YYYY-MM-DD_HH-MM-SS_microseconds/` and contain
+`raw_video.mp4`, `annotated_video.mp4`, `bed_grid.mp4`, `trajectory.csv`,
+`metadata.json`, and `calibration_snapshot.json`. After stop, the shared workflow
+asks for original G-code and produces conservative analysis in that same folder. CSV rows
 include tracking/calibration flags, pixel coordinates, bed millimeters, and the
 current homography for that frame. Missing coordinates are blank. This replaces
-the original pin-relative CSV schema. This script does not export G-code.
+the original pin-relative CSV schema. The shared reconstruction stage exports analysis-only G-code when bed coordinates are justified.
 
 Synthetic checks cover angled black patterned squares, coordinate conversion,
 marker loss, reacquisition, and degenerate geometry. Real printed-pattern

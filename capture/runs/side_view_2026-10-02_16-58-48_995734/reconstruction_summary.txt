@@ -1,0 +1,19 @@
+GENERAL RECONSTRUCTION - ANALYSIS ONLY / NOT FOR PRINTING
+Reference available: False
+Coordinate space: image_px
+Bed XY commands exported: False
+Layer structure: unknown
+Observed layer order: []; reference layer order: []
+Alignment: null
+Sources: /Users/RavenMott1/Library/CloudStorage/OneDrive-SharedLibraries-VirginiaStateUniversity/Thesis - Documents/code/capture/runs/side_view_2026-10-02_16-58-48_995734/trajectory.csv
+Provenance: camera_observation, tracker:CSRT, tracker:LED_red, tracker:RED_STRIP
+Cleanup: {"outliers": 0, "low_confidence": 0, "interpolated": 0}
+Rejected point reasons: {}
+Unknown: extrusion E, feedrate F, temperature, fan, acceleration, tool state, unobserved motion, layer index where absent, Z where absent, print/travel classification where absent
+Confidence: supplied scores are retained, not inferred or calibrated by this pipeline.
+Estimated calibration, interpolation, smoothing and hypothetical layers are flagged.
+No missing segments, closed loops, layer heights or printer settings are invented.
+Uncalibrated side pixels cannot produce bed XY. Plots remain in their native coordinate frame.
+G0 segment anchors are not observed safe travel; gaps are not joined in plots.
+No automatic time registration or assurance that reference and camera show the same print.
+Settings: {"trajectory": "/Users/RavenMott1/Library/CloudStorage/OneDrive-SharedLibraries-VirginiaStateUniversity/Thesis - Documents/code/capture/runs/side_view_2026-10-02_16-58-48_995734/trajectory.csv", "reference": null, "calibration": null, "states": null, "alignment": null, "output_dir": "/Users/RavenMott1/Library/CloudStorage/OneDrive-SharedLibraries-VirginiaStateUniversity/Thesis - Documents/code/capture/runs/side_view_2026-10-02_16-58-48_995734", "coordinates": "auto", "reference_scope": "print", "max_gap_seconds": 2.0, "max_jump": null, "pause_seconds": 1.0, "pause_radius": 0.05, "min_confidence": 0.0, "smooth_alpha": null, "interpolate_max_points": 0, "layers_from_z": false, "layer_z_tolerance": 0.05, "arc_step_mm": 1.0, "per_layer_plots": false, "view": "side_view", "run_timestamp": "2026-10-02_16-58-48_995734"}

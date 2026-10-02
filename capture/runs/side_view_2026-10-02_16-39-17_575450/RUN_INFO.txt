@@ -1,0 +1,3 @@
+Permanent experiment: side_view
+Capture files and analysis share this folder.
+Do not execute path-only G-code on the printer.

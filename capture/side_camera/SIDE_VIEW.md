@@ -1,3 +1,5 @@
+> **Current workflow:** Use [../RUN_COMMANDS.md](../RUN_COMMANDS.md). New recordings are permanent `runs/{view}_{date}_{time}/` experiments with `raw_video.mp4`, `annotated_video.mp4`, `trajectory.csv`, and `metadata.json`. After recording, answer the reference prompt in the terminal; analysis is saved in the same folder. Shared lifecycle code is `../experiment_log.py`.
+
 > Run commands below from the **capture root**, not from this camera subfolder. Shared motion/LED settings are in `../tracking_common.py`. See [current run guide](../RUN_COMMANDS.md).
 
 # Separate side-view tracker
@@ -48,79 +50,48 @@ metric conversion requires motion near the calibrated plane. A side camera
 alone does not recover hidden depth, and this implementation does not track the
 bed surface or calculate the nozzle-to-bed gap as the bed moves in Z.
 
-## Saved files
+## Permanent output files
 
-Each recording goes into `captures/side_camera/YYYY-MM-DD/HH-MM-SS_microseconds/`:
+Recordings now go into `runs/side_view_YYYY-MM-DD_HH-MM-SS_microseconds/`.
+Each contains `raw_video.mp4`, `annotated_video.mp4`, `trajectory.csv`, and
+`metadata.json`, followed by reconstruction/plots/summaries after recording ends.
+See [OUTPUTS.md](../OUTPUTS.md) for the complete manifest. No measured bed XY
+is invented from the side view. CSV time includes interactive pause duration;
+video includes only processed unpaused frames.
 
-- `side_annotated.mp4`: tip, head box, image trajectory, coordinates, status.
-- `side_trajectory.csv`: source frame, elapsed time, pixel coordinates, optional
-  side-plane millimeters, validity flags, and each frame's homography.
-- `side_run.json`: starting settings and coordinate interpretation.
+## Red head-strip assistance
 
-Use `--save-dir` to choose another root. Missing metric coordinates remain blank;
-there is no G-code export. Wall-clock CSV timing includes interactive pauses;
-video contains only processed, unpaused frames at source FPS. A fixed LED offset
-is approximate and should be checked visually. This script adds a side-view
-measurement path; it does not validate physical measurement accuracy by itself.
+Red-strip assistance is enabled by default and takes priority over the red/blue
+LEDs when it finds a unique match. Put one short, wide,
+matte-red rectangle on a fixed, cool part of the head housing, visible inside
+the selected ROI. After selecting the head with S, SHIFT-click the physical
+nozzle tip once. The strip-to-tip offset is learned from the strip in that ROI;
+the red outline and `RED_STRIP` status show when it is supplying the tip
+estimate. Use `--no-red-strip` to turn it off. The strip tracker uses a large,
+wide-rectangle filter to distinguish the marker from the smaller red LED.
 
-## Yellow warning-label assistance
+Tune color, shape, and tracking limits near the top of
+`side_nozzle_tracker.py`: `RED_STRIP_HSV_LOW_1` / `RED_STRIP_HSV_HIGH_1` and
+`RED_STRIP_HSV_LOW_2` / `RED_STRIP_HSV_HIGH_2` cover red at both ends of
+OpenCV's hue scale (defaults H=0–10 and 170–179, S=70–255, V=60–255).
+`RED_STRIP_MIN_AREA` / `RED_STRIP_MAX_AREA` set contour size;
+`RED_STRIP_MIN_ASPECT_RATIO` rejects shapes that are not wide rectangles;
+`RED_STRIP_SEARCH_RADIUS_PX` limits the match around the predicted strip
+position; and `RED_STRIP_MAX_WITHOUT_CSRT_FRAMES` limits fallback duration. If
+multiple similar red rectangles appear in the ROI at
+initialization or near the predicted position, the tracker rejects the match.
 
-Yellow assistance is enabled by default. Select a head ROI that contains both
-separate yellow warning labels, then SHIFT-click the physical tip while paused.
-After resuming, the script learns each label's offset from the CSRT tip estimate.
-Yellow outlines labeled Y1/Y2 show matched regions. The status and CSV identify
-`YELLOW_2/2` or `YELLOW_1/2` when labels supply the tip position.
+The strip estimates the tip using a fixed pixel offset. It does not measure
+depth, compensate for perspective changes, or determine printer bed X–Y. The
+side-view homography above remains a side-plane calibration only; to retain
+bed coordinates while a bed fiducial is occluded, use the upward-camera bed
+tracker and its bed-plane calibration instead. Do not treat this head marker as
+a replacement for bed fiducials.
 
-Both labels must be separately detected to initialize. Once learned, either one
-can help during partial occlusion. Label-only tracking is limited to 60 frames
-without a valid CSRT result. Ambiguous yellow blobs, large area changes, and
-inconsistent two-label tip estimates are rejected. The code falls back to
-LED/CSRT estimates when yellow matching fails; it does not infer temperature.
+## Automatic start and post-record processing
 
-Use `--no-yellow` to disable this feature. The HSV range, area limits, matching
-radius and loss limit are settings at the top of `side_nozzle_tracker.py`.
-Yellow defaults are H=18–40, S=90–255, V=80–255 in OpenCV HSV. These may need
-adjustment for your lighting. Keep both labels within the ROI and distinguishable
-from yellow background objects. If they merge into one region, initialization
-will wait rather than assign two invented labels.
-
-This uses fixed image-space offsets, not exact tip detection or head pose
-estimation. Scale/rotation changes and partially covered labels can move their
-apparent centers and introduce measurement error. Check the magenta tip point
-throughout motion, and reselect/recalibrate if it is incorrect. No extra
-libraries or trained models are required.
-
-## Automatic start and separation from other views
-
-Automatic recording is already armed at launch. Select the head with S, set its
-tip with SHIFT-click, then press SPACE to resume. No V press is needed: movement
-of at least 5 pixels for three consecutive valid frames starts recording.
-`AUTO ARMED - waiting for movement` means ready; `RECORDING` means saving.
-Recording continues through pauses in nozzle movement. V stops and disarms;
-A re-arms. Q exits. Tracking must be initialized; auto-start does not find the
-head automatically.
-
-New outputs are separated as follows (under `capture/captures`):
-
-```text
-side_camera/YYYY-MM-DD/time/
-  side_annotated.mp4
-  side_trajectory.csv
-  side_run.json
-upward_camera/bed_view/YYYY-MM-DD/time/
-  bed_annotated.mp4
-  bed_grid.mp4
-  bed_trajectory.csv
-  bed_calibration.json
-auto_upward_camera/bed_view/YYYY-MM-DD/time/
-  auto_bed_*.mp4
-  auto_bed_*.csv       (when requested)
-  auto_bed_*.gcode     (when requested)
-  auto_bed_run.json
-```
-
-CSV rows and JSON metadata contain a `view_mode` field. Side-view metadata also
-records whether recording started manually or from nozzle movement. Custom
-save directories still apply; filenames and metadata retain their view labels.
-Old captures are not renamed or moved because their view cannot be assumed
-from generic historical filenames. These conventions apply after restart.
+Auto-start is armed at launch. Select the head, set the tip and resume.
+Five pixels of motion for three valid frames starts recording. V stops and
+disarms; A re-arms. Q exits. After stop, the terminal asks for reference G-code;
+press Enter to leave comparison pending. Multiple recordings become separate
+permanent side_view folders. --no-reference-prompt suppresses the question.

@@ -1,0 +1,21 @@
+{
+  "provenance": "slicer_gcode_not_camera",
+  "source": "/Users/RavenMott1/Downloads/UMS3_square/3D/model.gcode",
+  "segments": 1,
+  "xy_bounds_mm": {
+    "min_x": 100.37,
+    "max_x": 129.628,
+    "min_y": 80.37,
+    "max_y": 109.628
+  },
+  "print_path_length_mm": 116.56366953493617,
+  "side_observation": {
+    "source": "/Users/RavenMott1/Library/CloudStorage/OneDrive-SharedLibraries-VirginiaStateUniversity/Thesis - Documents/code/capture/captures/side_camera/2026-09-25/17-46-39_551308/side_trajectory.csv",
+    "rows": 461,
+    "tracked_rows": 461,
+    "elapsed_span_seconds": 179.8205099429979,
+    "units": "image_pixels",
+    "same_print_as_reference": "not_verified",
+    "note": "No time/path registration or automatic perimeter isolation performed."
+  }
+}

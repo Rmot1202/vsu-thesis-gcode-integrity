@@ -1,0 +1,31 @@
+{
+  "view": "side_view",
+  "run_timestamp": "2026-10-02_16-44-08_392539",
+  "started_at": "2026-10-02T16:44:08.393833-04:00",
+  "capture_status": "finished",
+  "processing_status": "complete",
+  "comparison_status": "pending",
+  "settings": {
+    "input": "0",
+    "reference_dimensions_mm": [
+      null,
+      null
+    ],
+    "recording_trigger": "nozzle_movement",
+    "coordinate_system": "Side plane only; not printer XY or Z gap",
+    "tip_fraction": [
+      0.35714285714285715,
+      0.9932885906040269
+    ]
+  },
+  "permanent": true,
+  "ended_at": "2026-10-02T16:47:20.371740-04:00",
+  "frames_recorded": 491,
+  "final_tip_fraction": [
+    0.35714285714285715,
+    0.9932885906040269
+  ],
+  "last_processed_at": "2026-10-02T16:48:21.621940-04:00",
+  "coordinate_space": "image_px",
+  "bed_xy_commands_available": false
+}

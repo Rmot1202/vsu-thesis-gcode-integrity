@@ -20,93 +20,87 @@ sys.path.insert(0, str(CAPTURE_ROOT))
 
 import cv2
 import numpy as np
+from experiment_log import Experiment, add_capture_arguments, startup_cleanup, finish_capture
 from tracking_common import create_tracker, HeadLightTracker, MovementTrigger
 
 WINDOW = 'Side view | S ROI | SHIFT-click tip | C calibrate | SPACE pause | V record | A arm | Q quit'
 TIP_FRACTION = (.5, 1.0)
 TRAIL_LENGTH = 2000
-YELLOW_HSV_LOW = (18, 90, 80)
-YELLOW_HSV_HIGH = (40, 255, 255)
-YELLOW_MIN_AREA = 30
-YELLOW_MAX_AREA = 6000
-YELLOW_SEARCH_RADIUS_PX = 35
-YELLOW_PAIR_AGREEMENT_PX = 12
-YELLOW_MAX_WITHOUT_CSRT_FRAMES = 60
+RED_STRIP_HSV_LOW_1 = (0, 70, 60)
+RED_STRIP_HSV_HIGH_1 = (10, 255, 255)
+RED_STRIP_HSV_LOW_2 = (170, 70, 60)
+RED_STRIP_HSV_HIGH_2 = (179, 255, 255)
+RED_STRIP_MIN_AREA = 40
+RED_STRIP_MAX_AREA = 6000
+RED_STRIP_MIN_ASPECT_RATIO = 1.5
+RED_STRIP_SEARCH_RADIUS_PX = 45
+RED_STRIP_MAX_WITHOUT_CSRT_FRAMES = 60
 
 
-class YellowLabelTracker:
-    """Anchor yellow regions inside the selected head ROI to the chosen tip.
-
-    These are color blobs, not decoded labels. Keep each label's offset fixed;
-    do not relearn it from fallback estimates, which would accumulate drift.
-    """
+class RedStripTracker:
+    """Track one wide red head marker using its fixed image-space tip offset."""
     def __init__(self):
-        self.anchors = []
+        self.offset = None
+        self.area = None
         self.last_tip = None
         self.lost_frames = 0
-        self.visible = []
+        self.visible = None
 
     def detect(self, frame):
         hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-        mask = cv2.inRange(hsv, np.array(YELLOW_HSV_LOW), np.array(YELLOW_HSV_HIGH))
-        # Close small gaps caused by the black warning symbols on yellow labels.
+        low_hues = cv2.inRange(hsv, np.array(RED_STRIP_HSV_LOW_1), np.array(RED_STRIP_HSV_HIGH_1))
+        high_hues = cv2.inRange(hsv, np.array(RED_STRIP_HSV_LOW_2), np.array(RED_STRIP_HSV_HIGH_2))
+        mask = cv2.bitwise_or(low_hues, high_hues)
         mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, np.ones((5, 5), np.uint8))
         contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         blobs = []
         for contour in contours:
             area = cv2.contourArea(contour)
-            if YELLOW_MIN_AREA <= area <= YELLOW_MAX_AREA:
-                moments = cv2.moments(contour)
-                if moments['m00']:
-                    center = np.array([moments['m10']/moments['m00'], moments['m01']/moments['m00']])
-                    blobs.append({'center': center, 'area': area, 'contour': contour})
+            if not RED_STRIP_MIN_AREA <= area <= RED_STRIP_MAX_AREA:
+                continue
+            _, (width, height), _ = cv2.minAreaRect(contour)
+            short_side = min(width, height)
+            if short_side <= 0 or max(width, height) / short_side < RED_STRIP_MIN_ASPECT_RATIO:
+                continue
+            moments = cv2.moments(contour)
+            if moments['m00']:
+                center = np.array([moments['m10']/moments['m00'], moments['m01']/moments['m00']])
+                blobs.append({'center': center, 'area': area, 'contour': contour})
         return blobs
 
     def update(self, frame, box, csrt_tip):
-        self.visible = []
+        self.visible = None
         self.lost_frames = 0 if csrt_tip is not None else self.lost_frames + 1
-        if self.lost_frames > YELLOW_MAX_WITHOUT_CSRT_FRAMES:
+        if self.lost_frames > RED_STRIP_MAX_WITHOUT_CSRT_FRAMES:
             self.last_tip = None
             return None
         blobs = self.detect(frame)
-        if not self.anchors:
+        if self.offset is None:
             if box is None or csrt_tip is None:
                 return None
-            x,y,w,h = box
-            inside = [b for b in blobs if x<=b['center'][0]<=x+w and y<=b['center'][1]<=y+h]
-            # Require both labels for initial identity assignment. Ambiguity is rejected.
-            if len(inside) != 2:
+            x, y, width, height = box
+            inside = [blob for blob in blobs if x <= blob['center'][0] <= x + width
+                      and y <= blob['center'][1] <= y + height]
+            if len(inside) != 1:
                 return None
-            inside.sort(key=lambda b: b['center'][0])
-            if np.linalg.norm(inside[0]['center']-inside[1]['center']) < 15:
-                return None
-            self.anchors = [{'offset': csrt_tip-b['center'], 'area': b['area']} for b in inside]
+            marker = inside[0]
+            self.offset = csrt_tip - marker['center']
+            self.area = marker['area']
+
         reference = csrt_tip if csrt_tip is not None else self.last_tip
         if reference is None:
             return None
-        estimates=[]; used=set()
-        for index, anchor in enumerate(self.anchors):
-            predicted = reference-anchor['offset']
-            matches = [(i,b) for i,b in enumerate(blobs)
-                       if .5 <= b['area']/anchor['area'] <= 2
-                       and np.linalg.norm(b['center']-predicted) <= YELLOW_SEARCH_RADIUS_PX]
-            if len(matches) != 1:
-                continue
-            i, blob = matches[0]
-            if i in used:
-                self.visible=[]
-                return None
-            used.add(i)
-            estimates.append(blob['center']+anchor['offset'])
-            self.visible.append((index,blob))
-        if len(estimates)==2 and np.linalg.norm(estimates[0]-estimates[1]) > YELLOW_PAIR_AGREEMENT_PX:
-            self.visible=[]
+        predicted = reference - self.offset
+        matches = [blob for blob in blobs
+                   if .5 <= blob['area'] / self.area <= 2
+                   and np.linalg.norm(blob['center'] - predicted) <= RED_STRIP_SEARCH_RADIUS_PX]
+        if len(matches) != 1:
+            self.last_tip = csrt_tip.copy() if csrt_tip is not None else self.last_tip
             return None
-        if estimates:
-            self.last_tip=np.mean(estimates,axis=0)
-            return self.last_tip.copy()
-        self.last_tip=None if csrt_tip is None else csrt_tip.copy()
-        return None
+        marker = matches[0]
+        self.visible = marker
+        self.last_tip = marker['center'] + self.offset
+        return self.last_tip.copy()
 
 
 def side_homography(points, width_mm, height_mm):
@@ -149,12 +143,11 @@ class Selection:
             self.tip=np.array([x,y],float)
 
 
-def annotate(frame,box,tip,metric,trail,selection,recording,armed,matrix,yellow=None,source="NONE"):
+def annotate(frame,box,tip,metric,trail,selection,recording,armed,matrix,red_strip=None,source="NONE"):
     display=frame.copy()
-    if yellow is not None:
-        for index,blob in yellow.visible:
-            cv2.drawContours(display,[blob['contour']],-1,(0,255,255),2)
-            cv2.putText(display,f'Y{index+1}',tuple(blob['center'].astype(int)),cv2.FONT_HERSHEY_SIMPLEX,.5,(0,255,255),2)
+    if red_strip is not None and red_strip.visible is not None:
+        cv2.drawContours(display,[red_strip.visible['contour']],-1,(0,0,255),2)
+        cv2.putText(display,'RED STRIP',tuple(red_strip.visible['center'].astype(int)),cv2.FONT_HERSHEY_SIMPLEX,.5,(0,0,255),2)
     previous=None
     for point in trail:
         if point is not None:
@@ -180,24 +173,36 @@ def annotate(frame,box,tip,metric,trail,selection,recording,armed,matrix,yellow=
     return display
 
 
-def main():
+def main(argv=None):
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--input',default='0',help='Webcam index or video path')
-    parser.add_argument('--save-dir',default=str(CAPTURE_ROOT/'captures'/'side_camera'))
+    add_capture_arguments(parser)
     parser.add_argument('--reference-width-mm',type=float)
     parser.add_argument('--reference-height-mm',type=float)
     parser.add_argument('--no-led',action='store_true')
-    parser.add_argument('--no-yellow',action='store_true',help='Disable yellow warning-label assistance')
-    args=parser.parse_args()
+    parser.add_argument('--no-red-strip',action='store_true',help='Disable red head-strip assistance')
+    args=parser.parse_args(argv)
+    startup_cleanup(args.runs_dir)
     dims=(args.reference_width_mm,args.reference_height_mm)
     if any(v is not None for v in dims) and not all(v is not None and np.isfinite(v) and v>0 for v in dims):
         parser.error('Specify both positive reference dimensions, or neither.')
     cap=cv2.VideoCapture(int(args.input) if args.input.isdecimal() else args.input)
     selection=Selection();tracker=None;box=None;matrix=None;tip=None
     fraction=np.array(TIP_FRACTION);lights=HeadLightTracker();movement=MovementTrigger()
-    yellow=YellowLabelTracker();source="NONE"
+    red_strip=RedStripTracker();source="NONE"
     trail=deque(maxlen=TRAIL_LENGTH);paused=False;armed=True
-    writer=handle=None;frame_index=0;recorded=0
+    writer=handle=raw_writer=None;frame_index=0;recorded=0
+    session=None
+    capture_status='interrupted'
+
+    def close_recording(status='finished'):
+        nonlocal writer,handle,raw_writer,session
+        if writer is not None:writer.release()
+        if raw_writer is not None:raw_writer.release()
+        if handle is not None:handle.close()
+        writer=handle=raw_writer=None
+        finished=session;session=None
+        finish_capture(finished,args,recorded,status,final_tip_fraction=fraction.tolist())
     try:
         if not cap.isOpened():raise RuntimeError(f'Cannot open {args.input}')
         fps=cap.get(cv2.CAP_PROP_FPS)
@@ -218,15 +223,15 @@ def main():
                 if not args.no_led:
                     tip=lights.update(frame,box,csrt_tip)
                     if lights.color:source='LED_'+lights.color
-                yellow_tip=None if args.no_yellow else yellow.update(frame,box,csrt_tip)
-                if yellow_tip is not None:
-                    tip=yellow_tip;source=f'YELLOW_{len(yellow.visible)}/2'
+                red_strip_tip=None if args.no_red_strip else red_strip.update(frame,box,csrt_tip)
+                if red_strip_tip is not None:
+                    tip=red_strip_tip;source='RED_STRIP'
                 if tip is None:source='NONE' 
                 trail.append(None if tip is None else tip.copy())
             if selection.tip is not None:
                 if box is not None:
                     fraction=(selection.tip-np.array(box[:2]))/np.array(box[2:])
-                    tip=selection.tip.copy();lights=HeadLightTracker();yellow=YellowLabelTracker();movement.reset();trail.append(None)
+                    tip=selection.tip.copy();lights=HeadLightTracker();red_strip=RedStripTracker();movement.reset();trail.append(None)
                 else:print('Select a head ROI with S before setting its tip.')
                 selection.tip=None
             if selection.calibrating and len(selection.corners)==4:
@@ -236,26 +241,31 @@ def main():
                 else:print('Side-plane calibration ready. SPACE resumes. Coordinates are not bed XY.')
             metric=map_point(tip,matrix)
             request_start=not paused and writer is None and armed and movement.update(tip)
-            display=annotate(frame,box,tip,metric,trail,selection,writer is not None,armed,matrix,yellow,source)
+            display=annotate(frame,box,tip,metric,trail,selection,writer is not None,armed,matrix,red_strip,source)
             cv2.imshow(WINDOW,display)
             key=cv2.waitKey(30 if paused else max(1,round(1000/fps)))&255
             quit_requested=key==ord('q') or cv2.getWindowProperty(WINDOW,cv2.WND_PROP_VISIBLE)<1
             if key==ord('v'):
                 if writer is not None:
-                    writer.release();handle.close();writer=handle=None;armed=False;movement.reset()
+                    close_recording();armed=False;movement.reset()
                 else:request_start=True
             if request_start and not quit_requested:
-                now=datetime.now().astimezone();folder=Path(args.save_dir)/now.strftime('%Y-%m-%d')/now.strftime('%H-%M-%S_%f')
-                folder.mkdir(parents=True,exist_ok=False)
+                recorded=0
+                session=Experiment.create(args.runs_dir,'side_view',{'input':args.input,'reference_dimensions_mm':dims,
+                    'recording_trigger':'manual' if key==ord('v') else 'nozzle_movement',
+                    'coordinate_system':'Side plane only; not printer XY or Z gap','tip_fraction':fraction.tolist()})
+                folder=session.folder
                 h,w=frame.shape[:2];size=(w+w%2,h+h%2)
-                writer=cv2.VideoWriter(str(folder/'side_annotated.mp4'),cv2.VideoWriter_fourcc(*'mp4v'),fps,size)
+                writer=cv2.VideoWriter(str(folder/'annotated_video.mp4'),cv2.VideoWriter_fourcc(*'mp4v'),fps,size)
                 if not writer.isOpened():raise RuntimeError('Cannot create recording')
-                handle=open(folder/'side_trajectory.csv','w',newline='');csv_writer=csv.writer(handle)
+                raw_writer=cv2.VideoWriter(str(folder/'raw_video.mp4'),cv2.VideoWriter_fourcc(*'mp4v'),fps,size)
+                if not raw_writer.isOpened():raise RuntimeError('Cannot create raw recording')
+                handle=open(folder/'trajectory.csv','w',newline='');csv_writer=csv.writer(handle)
                 csv_writer.writerow(['frame_index','elapsed_seconds','image_u_px','image_v_px','side_horizontal_mm','side_vertical_mm','tracking_valid','calibration_valid','image_to_side_homography','tracking_source','view_mode'])
-                (folder/'side_run.json').write_text(json.dumps({'view_mode':'side_view','script':'side_nozzle_tracker.py','recording_trigger':'manual' if key==ord('v') else 'nozzle_movement','started_at':now.isoformat(),'input':args.input,'reference_dimensions_mm':dims,'coordinate_system':'Side plane, bottom-left reference origin; NOT bed XY or Z gap','tip_fraction':fraction.tolist()},indent=2))
                 started=time.monotonic();recorded=0;print(f'Recording: {folder}')
             if writer is not None and not paused:
-                display=annotate(frame,box,tip,metric,trail,selection,True,armed,matrix,yellow,source)
+                display=annotate(frame,box,tip,metric,trail,selection,True,armed,matrix,red_strip,source)
+                raw_writer.write(cv2.copyMakeBorder(frame,0,size[1]-frame.shape[0],0,size[0]-frame.shape[1],cv2.BORDER_CONSTANT))
                 writer.write(cv2.copyMakeBorder(display,0,size[1]-frame.shape[0],0,size[0]-frame.shape[1],cv2.BORDER_CONSTANT))
                 csv_writer.writerow([frame_index,time.monotonic()-started,*(tip if tip is not None else ('','')),*(metric if metric is not None else ('','')),int(tip is not None),int(matrix is not None),json.dumps(matrix.tolist()) if matrix is not None else '',source,'side_view']);recorded+=1
             if quit_requested:break
@@ -265,7 +275,7 @@ def main():
                 if roi[2]>0 and roi[3]>0:
                     tracker=create_tracker('CSRT');tracker.init(frame,roi);box=roi
                     tip=np.array(roi[:2])+np.array(roi[2:])*fraction
-                    lights=HeadLightTracker();yellow=YellowLabelTracker();movement.reset();trail.append(None)
+                    lights=HeadLightTracker();red_strip=RedStripTracker();movement.reset();trail.append(None)
                 paused=True
             elif key==ord('c'):
                 if dims[0] is None:print('Restart with --reference-width-mm and --reference-height-mm for side-plane calibration.')
@@ -277,10 +287,10 @@ def main():
             if not paused:
                 ok,frame=cap.read();frame_index+=1
                 if not ok:break
+        capture_status='finished'
     finally:
-        if writer is not None:writer.release()
-        if handle is not None:handle.close()
         cap.release();cv2.destroyAllWindows()
+        close_recording(capture_status)
 
 
 if __name__=='__main__':main()

@@ -1,3 +1,5 @@
+> **Current workflow:** Use [../RUN_COMMANDS.md](../RUN_COMMANDS.md). New recordings are permanent `runs/{view}_{date}_{time}/` experiments with `raw_video.mp4`, `annotated_video.mp4`, `trajectory.csv`, and `metadata.json`. After recording, answer the reference prompt in the terminal; analysis is saved in the same folder. Historical filename examples below describe older captures, not the current output layout. Shared lifecycle code is `../experiment_log.py`.
+
 > Run commands below from the **capture root**, not from this camera subfolder. Shared motion/LED settings are in `../tracking_common.py`. See [current run guide](../RUN_COMMANDS.md).
 
 # Nozzle tracker: purpose and code explanation
@@ -179,63 +181,24 @@ segments and breaks them where positions are missing. The display history is
 bounded by `--trail-length`, default 3,000 entries. CSV and G-code stream data
 throughout the run rather than using only this display history.
 
-## Output files and dated folders
+## Permanent outputs and shared reconstruction
 
-`create_run_folder()` makes a fresh folder using local date and time:
+`create_run_folder()` delegates to `experiment_log.Experiment.create()`. Every
+capture is stored in `runs/up_auto_view_date_time/` with a permanent marker,
+raw_video.mp4, annotated_video.mp4, trajectory.csv, metadata.json, and final
+calibration_snapshot.json. Filenames are standardized across views; metadata
+and folder names identify the camera. CSV image positions and warped-bed
+positions are pixels, not machine millimeters.
 
-```text
-capture/captures/YYYY-MM-DD/HH-MM-SS_microseconds/
-├── annotated.mp4
-├── trajectory.csv       # when --csv is supplied
-├── trajectory.gcode     # when --gcode is supplied
-└── run.json
-```
+`finish_capture()` closes the experiment lifecycle: it records completion,
+asks for original G-code (or skips in noninteractive mode), and runs the shared
+reconstruction pipeline. Analysis files remain in the run folder; reprocessing
+archives earlier analysis there. No protected run is deleted on startup.
 
-The default capture root is beside the script, independent of the terminal's
-working directory. `--save-dir` changes that root. Output arguments provide
-filenames inside the run folder; directory portions are discarded. Unique run
-folders preserve previous captures.
-
-### Annotated video
-
-The MP4 contains both panels and the status footer. It uses source FPS, with a
-30 FPS fallback if the reported rate is unusable. Interactive pauses do not add
-duplicate video frames. No separate raw camera video is saved.
-
-### CSV
-
-| Column | Meaning |
-| --- | --- |
-| `frame_index` | Zero-based processed source-frame index |
-| `image_x`, `image_y` | Refined nozzle point in original-image pixels |
-| `bed_x`, `bed_y` | EMA-smoothed top-down coordinates in pixels |
-| `homography_valid` | 1 if a transform exists, including a cached transform |
-| `tracker_valid` | 1 if a tip estimate is available for that frame |
-
-Unavailable coordinate fields are blank. A row may have a valid tracker but
-blank bed coordinates if calibration is missing or the tip lies outside the
-bed rectangle. These flags indicate availability, not measured accuracy.
-
-### G-code
-
-`GCodeWriter` writes `G21` (millimeters), `G90` (absolute coordinates), and
-`G1 X… Y… F…` moves. `--feedrate` supplies a fixed feed rate in mm/min; it is
-not inferred from the recording. `--gcode-step-mm`, default 0.15, suppresses
-moves smaller than that distance from the last written point.
-
-Tracking gaps are marked with segment comments. Comments do not prevent
-movement: the next G1 still moves from the preceding position. The export has
-no homing, Z motion, extrusion, heating, or reconstructed timing. Review and
-adapt the path, coordinate origin, and clearance before machine execution.
-
-### Run metadata
-
-`run.json` records startup settings, timezone-aware start/end timestamps,
-processed frame count, status, and the last accepted pin centers and homography.
-It initially says `recording`; normal shutdown updates it to `finished`, while
-cleanup after an exception records `interrupted`. A forced process termination
-or power loss can prevent final metadata and video finalization. It stores the
-last calibration, not a per-frame calibration history.
+The reference file is copied as original_reference.gcode. It is used for
+comparison, not to fill missing camera measurements. The optional old GCodeWriter
+is available only through the legacy --gcode setting and is not the conservative
+reconstruction exporter. See [OUTPUTS.md](../OUTPUTS.md) for units and meaning.
 
 ## Code map
 

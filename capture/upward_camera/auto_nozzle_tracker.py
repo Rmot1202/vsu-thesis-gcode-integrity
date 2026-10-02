@@ -22,6 +22,7 @@ from pathlib import Path
 import sys
 CAPTURE_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(CAPTURE_ROOT))
+from experiment_log import Experiment, add_capture_arguments, startup_cleanup, finish_capture
 from tracking_common import create_tracker as create_shared_tracker
 
 import cv2
@@ -356,10 +357,9 @@ class GCodeWriter:
 def parse_args(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('--input', default='0', help='Video path or webcam index (default 0)')
-    parser.add_argument('--save-dir', default=str(CAPTURE_ROOT / 'captures' / 'upward_camera' / 'auto_bed_view'),
-                        help='Root for dated run folders (default: captures beside this script)')
+    add_capture_arguments(parser)
     parser.add_argument('--output', default='annotated.mp4', help='Video filename within the run folder')
-    parser.add_argument('--csv', help='Optional CSV filename within the run folder')
+    parser.add_argument('--csv', default='trajectory.csv', help='Optional CSV filename within the run folder')
     parser.add_argument('--gcode', help='Optional G-code filename within the run folder; requires measured pin dimensions')
     parser.add_argument('--hsv-low', type=hsv_value, default=(0, 0, 50))
     parser.add_argument('--hsv-high', type=hsv_value, default=(179, 60, 255))
@@ -407,39 +407,21 @@ def parse_args(argv=None):
 
 
 def create_run_folder(args):
-    """Keep all artifacts together, with collision-safe local date/time naming."""
-    started = datetime.now().astimezone()
-    parent = Path(args.save_dir).expanduser().resolve() / started.strftime('%Y-%m-%d')
-    parent.mkdir(parents=True, exist_ok=True)
-    stem = started.strftime('%H-%M-%S_%f')
-    folder = parent / stem
-    suffix = 0
-    while True:
-        try:
-            folder.mkdir()
-            break
-        except FileExistsError:
-            suffix += 1
-            folder = parent / f'{stem}_{suffix}'
-    for field in ('output', 'csv', 'gcode'):
-        value = getattr(args, field)
-        if value:
-            name = Path(value).name
-            if not name.startswith('auto_bed_'):
-                name = 'auto_bed_' + name
-            setattr(args, field, str(folder / name))
-    metadata = {'view_mode': 'auto_bed_view', 'script': 'auto_nozzle_tracker.py', 'started_at': started.isoformat(), 'status': 'recording',
-                'settings': vars(args).copy(), 'frames_processed': 0}
-    (folder / 'auto_bed_run.json').write_text(json.dumps(metadata, indent=2) + '\n')
-    print(f'Saving capture to: {folder}', flush=True)
-    return folder, metadata
+    session=Experiment.create(args.runs_dir,'up_auto_view',vars(args).copy())
+    args.output=str(session.folder/'annotated_video.mp4')
+    args.csv=str(session.folder/'trajectory.csv')
+    if args.gcode:
+        args.gcode=str(session.folder/'configured_xy_legacy.gcode')
+    return session,session.metadata
 
 
 def main(argv=None):
     args = parse_args(argv)
+    startup_cleanup(args.runs_dir)
     source = int(args.input) if args.input.isdecimal() else args.input
     capture = cv2.VideoCapture(source)
-    writer = csv_handle = gcode_handle = None
+    writer = raw_writer = csv_handle = gcode_handle = None
+    session=None
     count = 0
     run_folder = metadata = None
     calibration = None
@@ -447,7 +429,8 @@ def main(argv=None):
     try:
         if not capture.isOpened():
             raise RuntimeError(f'Cannot open input: {args.input}')
-        run_folder, metadata = create_run_folder(args)
+        session, metadata = create_run_folder(args)
+        run_folder=session.folder
         fps = capture.get(cv2.CAP_PROP_FPS)
         fps = fps if math.isfinite(fps) and 0 < fps <= 240 else 30
         for path in (args.output, args.csv, args.gcode):
@@ -547,6 +530,11 @@ def main(argv=None):
                 writer = cv2.VideoWriter(args.output, cv2.VideoWriter_fourcc(*'mp4v'), fps, video_size)
                 if not writer.isOpened():
                     raise RuntimeError(f'Cannot create output video: {args.output}')
+            if raw_writer is None:
+                raw_size=(frame.shape[1]+frame.shape[1]%2,frame.shape[0]+frame.shape[0]%2)
+                raw_writer=cv2.VideoWriter(str(run_folder/'raw_video.mp4'),cv2.VideoWriter_fourcc(*'mp4v'),fps,raw_size)
+                if not raw_writer.isOpened():raise RuntimeError('Cannot create raw video')
+            raw_writer.write(cv2.copyMakeBorder(frame,0,raw_size[1]-frame.shape[0],0,raw_size[0]-frame.shape[1],cv2.BORDER_CONSTANT))
             writer.write(cv2.copyMakeBorder(canvas, 0, video_size[1] - canvas.shape[0], 0, video_size[0] - canvas.shape[1], cv2.BORDER_CONSTANT))
             if csv_writer:
                 csv_writer.writerow([count, *(tip if tip is not None else ('', '')), *(smoothed if smoothed is not None else ('', '')), int(calibration.matrix is not None), int(tip is not None), 'auto_bed_view'])
@@ -563,6 +551,8 @@ def main(argv=None):
         capture.release()
         if writer is not None:
             writer.release()
+        if raw_writer is not None:
+            raw_writer.release()
         if csv_handle:
             csv_handle.close()
         if gcode_handle:
@@ -576,7 +566,8 @@ def main(argv=None):
                 metadata['final_tip_anchor'] = list(args.tip_anchor)
                 metadata['last_pin_centers'] = calibration.points.tolist() if calibration.points is not None else None
                 metadata['last_homography'] = calibration.matrix.tolist() if calibration.matrix is not None else None
-            (run_folder / 'auto_bed_run.json').write_text(json.dumps(metadata, indent=2) + '\n')
+            (run_folder / 'calibration_snapshot.json').write_text(json.dumps(metadata, indent=2,default=str) + '\n')
+            finish_capture(session,args,count,'finished' if completed else 'interrupted')
 
 
 if __name__ == '__main__':

@@ -1,0 +1,14 @@
+segment,point,x_mm,y_mm,source_line,point_role,provenance
+0,0,129.562,109.562,46,segment_start,slicer_gcode
+0,1,129.626,109.334,46,print_endpoint,slicer_gcode
+0,2,129.628,80.772,47,print_endpoint,slicer_gcode
+0,3,129.563,80.437,48,print_endpoint,slicer_gcode
+0,4,129.284,80.37,49,print_endpoint,slicer_gcode
+0,5,100.722,80.372,50,print_endpoint,slicer_gcode
+0,6,100.436,80.436,51,print_endpoint,slicer_gcode
+0,7,100.37,80.712,52,print_endpoint,slicer_gcode
+0,8,100.372,109.274,53,print_endpoint,slicer_gcode
+0,9,100.437,109.563,54,print_endpoint,slicer_gcode
+0,10,100.712,109.628,55,print_endpoint,slicer_gcode
+0,11,129.274,109.626,56,print_endpoint,slicer_gcode
+0,12,129.562,109.562,57,print_endpoint,slicer_gcode

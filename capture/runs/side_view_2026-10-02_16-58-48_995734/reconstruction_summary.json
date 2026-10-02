@@ -1,0 +1,71 @@
+{
+  "rejected_point_reasons": {},
+  "analysis_only": true,
+  "partial_reconstruction": true,
+  "reference_available": false,
+  "coordinate_space": "image_px",
+  "bed_xy_commands_available": false,
+  "input_hashes": {
+    "/Users/RavenMott1/Library/CloudStorage/OneDrive-SharedLibraries-VirginiaStateUniversity/Thesis - Documents/code/capture/runs/side_view_2026-10-02_16-58-48_995734/trajectory.csv": "ee640e9a5dab70acf72b3b8f0850f96ec00baaa784e9c79a9b870369235b053a"
+  },
+  "settings": {
+    "trajectory": "/Users/RavenMott1/Library/CloudStorage/OneDrive-SharedLibraries-VirginiaStateUniversity/Thesis - Documents/code/capture/runs/side_view_2026-10-02_16-58-48_995734/trajectory.csv",
+    "reference": null,
+    "calibration": null,
+    "states": null,
+    "alignment": null,
+    "output_dir": "/Users/RavenMott1/Library/CloudStorage/OneDrive-SharedLibraries-VirginiaStateUniversity/Thesis - Documents/code/capture/runs/side_view_2026-10-02_16-58-48_995734",
+    "coordinates": "auto",
+    "reference_scope": "print",
+    "max_gap_seconds": 2.0,
+    "max_jump": null,
+    "pause_seconds": 1.0,
+    "pause_radius": 0.05,
+    "min_confidence": 0.0,
+    "smooth_alpha": null,
+    "interpolate_max_points": 0,
+    "layers_from_z": false,
+    "layer_z_tolerance": 0.05,
+    "arc_step_mm": 1.0,
+    "per_layer_plots": false,
+    "view": "side_view",
+    "run_timestamp": "2026-10-02_16-58-48_995734"
+  },
+  "alignment": null,
+  "reference_layer_order": [],
+  "observed_layer_order": [],
+  "layer_structure": "unknown",
+  "reference_layers_without_observed_label": [],
+  "layers_note": "Missing layer labels do not prove missing physical layers. Reference layers are never copied into observations.",
+  "input_rows": 171,
+  "valid_input_points": 171,
+  "segments": 3,
+  "cleanup": {
+    "outliers": 0,
+    "low_confidence": 0,
+    "interpolated": 0
+  },
+  "unknowns": [
+    "extrusion E",
+    "feedrate F",
+    "temperature",
+    "fan",
+    "acceleration",
+    "tool state",
+    "unobserved motion",
+    "layer index where absent",
+    "Z where absent",
+    "print/travel classification where absent"
+  ],
+  "provenance_tags": [
+    "camera_observation",
+    "tracker:CSRT",
+    "tracker:LED_red",
+    "tracker:RED_STRIP"
+  ],
+  "notes": [],
+  "comparison": {
+    "available": false,
+    "reason": "Requires reference and bed_mm observations; no pixel/side overlay metric"
+  }
+}

@@ -1,0 +1,5 @@
+ANALYSIS ONLY - reference comparison
+{
+  "available": false,
+  "reason": "Requires reference and bed_mm observations; no pixel/side overlay metric"
+}

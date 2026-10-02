@@ -1,65 +1,69 @@
-# Camera-specific nozzle trackers
+# Print observation experiments
 
-Run commands from this `capture` directory with the existing environment active:
+**Treat each run folder as a permanent experiment record once it has been created.**
+
+Use one entry point from this `capture` directory:
 
 ```bash
 source .venv/bin/activate
+python experiment.py capture --view side_view --input 0
 ```
 
-| Camera position | Script | Purpose | Default output root |
-| --- | --- | --- | --- |
-| Upward / angled bed view | `upward_camera/nozzle_grid_tracker.py` | Black fiducials, bed XY, CSRT/LED tracking | `captures/upward_camera/bed_view/` |
-| Upward / angled bed view, alternative | `upward_camera/auto_nozzle_tracker.py` | HSV pin detection and automatic acquisition | `captures/upward_camera/auto_bed_view/` |
-| Sideward view | `side_camera/side_nozzle_tracker.py` | Side-plane/pixel tracking, yellow labels and LEDs | `captures/side_camera/` |
-
-“Upward” is the name for your original angled camera setup; it must still see
-well-separated bed markers. It is not a claim that a camera looking straight
-up or along the bed can use the same calibration.
-
-## Upward camera: printed black fiducials
+For the original angled/upward camera:
 
 ```bash
-python upward_camera/nozzle_grid_tracker.py
+python experiment.py capture --view up_view --input 0
 ```
 
-Press S to select the head. Motion starts recording automatically. V stops and
-disarms automatic restart; A re-arms; Q quits. Calibration and two/three-marker
-fallback operate as before. See [fiducial guide](upward_camera/CUSTOM_FIDUCIALS.md).
+The workflow is: **capture → stop recording → optional reference prompt →
+reconstruction/comparison → permanent experiment folder**. At the terminal
+prompt, paste the original G-code path or press Enter to add it later.
 
-## Sideward camera
+New recordings are saved in:
 
-```bash
-python side_camera/side_nozzle_tracker.py --input 0
+```text
+runs/side_view_2026-10-02_15-45-00_123456/
+runs/up_view_2026-10-02_15-45-00_123456/
 ```
 
-Press S, select the head including both yellow labels, SHIFT-click the tip,
-then SPACE to resume. Movement starts recording automatically. V stops; A
-re-arms; Q quits. See [side guide](side_camera/SIDE_VIEW.md).
-Side-view coordinates are not printer bed XY or depth measurements.
+Each recording has its own view/date/time name; microseconds avoid collisions.
+Videos, CSV, metadata, reference (if supplied), analysis G-code, images and
+summaries all live in that folder. Recording V-stop may wait for the terminal
+reference prompt; press Enter there before continuing to record.
 
-## Alternative upward-camera tracker
+## Navigation
 
-```bash
-python upward_camera/auto_nozzle_tracker.py --input 0 --csv trajectory.csv
-```
+- [Run commands](RUN_COMMANDS.md): copy-and-paste commands.
+- [Workflow](WORKFLOW.md): capture lifecycle, startup cleanup, adding a reference.
+- [Output guide](OUTPUTS.md): filenames, units, provenance and comparison status.
+- [Reconstruction details](reconstruction/README.md): input contracts, algorithms,
+  segmentation, layer evidence and optional processing.
+- [Side-camera controls](side_camera/SIDE_VIEW.md).
+- [Upward-camera calibration](upward_camera/CUSTOM_FIDUCIALS.md).
 
-This alternative records processed frames immediately. It uses HSV pins rather
-than the custom black-block detector. Optional XY-only G-code requires measured
-pin spacing; see [automatic tracker guide](upward_camera/AUTO_TRACKER.md).
+## Code structure
 
-## Shared files and outputs
+| Location | Responsibility |
+| --- | --- |
+| `experiment.py` | Unified capture, import, process and cleanup commands |
+| `experiment_log.py` | Permanent folders, metadata, reference prompt, protected publishing |
+| `tracking_common.py` | Shared CSRT, LED assistance and motion trigger |
+| `side_camera/` | Side-view pixels/side-plane measurements and yellow-label tracking |
+| `upward_camera/` | Printed-fiducial bed mapping and alternative HSV tracker |
+| `reconstruction/` | Loading → alignment → segmentation/layers → conservative export |
+| `legacy/` | Preserved one-off reference extractor; not the main workflow |
+| `tests/` | Synthetic and video-file integration tests |
 
-`tracking_common.py` contains shared CSRT creation, LED detection, and motion
-trigger settings. `requirements.txt` and `.venv/` remain at this root. Install
-requirements with `python -m pip install -r requirements.txt` if needed.
-Neither camera folder imports the other camera's tracker.
+Shared files stay at this root; camera algorithms remain separate. The standard
+side/up trackers start saving on confirmed motion after ROI initialization.
+The alternative `up_auto_view` uses HSV pins and records immediately.
 
-Recordings have dated session subfolders. Filenames remain `side_*`, `bed_*`,
-or `auto_bed_*`, and new CSV/JSON data retains the `view_mode` field. Path defaults
-are anchored to this capture root, regardless of terminal working directory.
-`--save-dir` overrides still apply where supported.
+Startup removes only explicitly marked disposable tests in the selected run
+root. Protected permanent experiments survive every startup, successful finish,
+interruption, and processing failure. Existing historical camera captures remain
+under `captures/`; use `experiment.py import` to bring one into the new workflow.
+See WORKFLOW.md for the precise cleanup rule.
 
-Existing recordings identified by calibration metadata are moved into their
-matching camera output tree without changing video or CSV contents. Unidentified
-old recordings stay in their original locations under `captures/` and should
-be treated as legacy/unclassified data. No recordings are deleted.
+All reconstruction G-code is analysis-only, not printable. Side pixels cannot
+produce printer XY. Temperature, extrusion, feedrate, and unknown layer/Z data
+are not invented. No YOLO is required.

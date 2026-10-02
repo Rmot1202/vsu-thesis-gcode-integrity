@@ -6,6 +6,7 @@ selection workflow; movement starts recording. v stops/starts, a re-arms, r to r
 A homography measures the marker plane only; nozzle/marker height differences
 and lens distortion cause error. This program does not measure Z.
 """
+import argparse
 import csv
 import itertools
 import json
@@ -17,6 +18,7 @@ from pathlib import Path
 import sys
 CAPTURE_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(CAPTURE_ROOT))
+from experiment_log import Experiment, add_capture_arguments, startup_cleanup, finish_capture
 from tracking_common import create_tracker, HeadLightTracker, MovementTrigger, LED_TRACKING_ENABLED, MOVEMENT_THRESHOLD_PX, MOVEMENT_CONFIRM_FRAMES
 
 import cv2
@@ -433,10 +435,15 @@ def draw_calibration(frame, calibration):
 
 
 
-def main():
+def main(argv=None):
+    parser=argparse.ArgumentParser(description='Upward-camera fiducial tracker and permanent experiment logging')
+    parser.add_argument('--input',default=str(CAMERA_INDEX))
+    add_capture_arguments(parser)
+    args=parser.parse_args(argv)
+    startup_cleanup(args.runs_dir)
     if sorted(IMAGE_CORNER_LABELS) != sorted(MARKER_LABELS):
         raise ValueError('IMAGE_CORNER_LABELS must contain FL, FR, RR, RL exactly once')
-    cap = cv2.VideoCapture(CAMERA_INDEX)
+    cap = cv2.VideoCapture(int(args.input) if args.input.isdecimal() else args.input)
     writers = []
     csv_file = None
     csv_writer = None
@@ -445,6 +452,8 @@ def main():
     tracker = None
     tracking = False
     recording = False
+    session=None
+    capture_status='interrupted'
     auto_record_armed = AUTO_RECORD_ON_MOVEMENT
     movement = MovementTrigger()
     lights = HeadLightTracker()
@@ -455,17 +464,19 @@ def main():
     display_transform = bed_view_transform()
 
     def start_recording(frame, reason):
-        nonlocal csv_file, csv_writer, recording, recording_start, frame_number
-        now = datetime.now()
-        folder = Path(OUTPUT_DIR) / now.strftime('%Y-%m-%d') / now.strftime('%H-%M-%S_%f')
-        folder.mkdir(parents=True, exist_ok=False)
-        for name, size in [('bed_annotated.mp4', (frame.shape[1], frame.shape[0])),
-                           ('bed_grid.mp4', (width + width % 2, height + height % 2))]:
+        nonlocal csv_file, csv_writer, recording, recording_start, frame_number, session
+        frame_number=0
+        session=Experiment.create(args.runs_dir,'up_view',{'input':args.input,'recording_trigger':reason,
+            'bed_size_mm':[BED_WIDTH_MM,BED_DEPTH_MM],'coordinate_space':'bed_mm'})
+        folder=session.folder
+        for name, size in [('annotated_video.mp4', (frame.shape[1]+frame.shape[1]%2, frame.shape[0]+frame.shape[0]%2)),
+                           ('bed_grid.mp4', (width + width % 2, height + height % 2)),
+                           ('raw_video.mp4', (frame.shape[1]+frame.shape[1]%2, frame.shape[0]+frame.shape[0]%2))]:
             writer = cv2.VideoWriter(str(folder/name), cv2.VideoWriter_fourcc(*'mp4v'), TARGET_FPS, size)
             writers.append(writer)
             if not writer.isOpened():
                 raise RuntimeError(f'Cannot open video writer: {folder/name}')
-        csv_file = open(folder/'bed_trajectory.csv', 'w', newline='')
+        csv_file = open(folder/'trajectory.csv', 'w', newline='')
         csv_writer = csv.writer(csv_file)
         csv_writer.writerow(['frame', 'time_seconds', 'tracking_ok', 'calibration_valid',
                              'inside_bed', 'nozzle_u_px', 'nozzle_v_px',
@@ -480,11 +491,21 @@ def main():
                     'marker_size_mm': MARKER_SIZE_MM, 'black_threshold': BLACK_THRESHOLD,
                     'reference_points_image_px': calibration.points.tolist() if calibration.points is not None else None,
                     'note': 'XY on marker plane only; each CSV row stores its current homography.'}
-        (folder/'bed_calibration.json').write_text(json.dumps(metadata, indent=2))
+        (folder/'calibration_snapshot.json').write_text(json.dumps(metadata, indent=2))
         recording = True
         recording_start = time.monotonic()
         frame_number = 0
         print(f'Recording to {folder}')
+
+    def close_recording(status='finished'):
+        nonlocal writers,csv_file,csv_writer,session,recording
+        for writer in writers:writer.release()
+        writers=[]
+        if csv_file is not None:csv_file.close()
+        csv_file=csv_writer=None
+        recording=False
+        finished=session;session=None
+        finish_capture(finished,args,frame_number,status)
 
     try:
         if not cap.isOpened():
@@ -547,7 +568,8 @@ def main():
                 text(raw_display, 'AUTO ARMED - waiting for nozzle movement' if auto_record_armed else 'AUTO OFF - press a to arm or v to record', 4)
             if recording:
                 text(raw_display, 'RECORDING - BED VIEW', 4, (0, 0, 255))
-                writers[0].write(raw_display)
+                writers[0].write(cv2.copyMakeBorder(raw_display,0,frame.shape[0]%2,0,frame.shape[1]%2,cv2.BORDER_CONSTANT))
+                writers[2].write(cv2.copyMakeBorder(frame,0,frame.shape[0]%2,0,frame.shape[1]%2,cv2.BORDER_CONSTANT))
                 # Pad odd dimensions to avoid codec silently cropping bed borders.
                 writers[1].write(cv2.copyMakeBorder(grid, 0, height % 2, 0, width % 2, cv2.BORDER_CONSTANT))
                 csv_writer.writerow([frame_number, f'{time.monotonic()-recording_start:.6f}',
@@ -589,24 +611,18 @@ def main():
                 print('Automatic recording armed for nozzle movement.')
             elif key == ord('v'):
                 if recording:
-                    for writer in writers:
-                        writer.release()
-                    writers = []
-                    csv_file.close()
-                    csv_file = None
-                    recording = False
+                    close_recording()
                     auto_record_armed = False
                     movement.reset()
                     print('Recording stopped. Press a to re-arm automatic recording.')
                 else:
                     start_recording(frame, 'manual')
+        capture_status='finished'
     finally:
-        for writer in writers:
-            writer.release()
-        if csv_file is not None:
-            csv_file.close()
         cap.release()
         cv2.destroyAllWindows()
+        close_recording(capture_status)
+
 
 
 if __name__ == '__main__':
