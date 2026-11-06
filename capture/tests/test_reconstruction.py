@@ -5,12 +5,12 @@ import unittest
 from pathlib import Path
 import sys
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
-from reconstruction.pipeline import parser,run
-from reconstruction.ingest import load_trajectory
-from reconstruction.reference import load_reference
-from reconstruction.processing import clean,segment,organize_layers
-from reconstruction.model import Point
-from reconstruction.alignment import align
+from backend.reconstruction.pipeline import parser,run
+from backend.reconstruction.ingest import load_trajectory
+from backend.reconstruction.reference import load_reference
+from backend.reconstruction.processing import clean,segment,organize_layers
+from backend.reconstruction.model import Point
+from backend.reconstruction.alignment import align
 
 
 class ReconstructionTests(unittest.TestCase):
@@ -28,6 +28,26 @@ class ReconstructionTests(unittest.TestCase):
                          [2,.2,'','',0,.2,'unknown'],[3,.3,40,45,0,.2,'infill'],[4,.4,50,45,0,.2,'infill'],
                          [5,.5,10,20,2,.6,'perimeter'],[6,.6,20,20,2,.6,'perimeter']])
     def args(self,csv,*extra):return parser().parse_args(['--trajectory',str(csv),'--output-dir',str(self.root/'out'),*extra])
+    def test_yolo_print_window_excludes_startup_and_reference_settings_are_comments(self):
+        path=self.csv('head.csv',['frame_index','time_seconds','nozzle_tip_x_px','nozzle_tip_y_px','tracking_valid'],
+                      [[0,0,999,999,1],[1,1,20,30,1],[2,2,'','',0],[3,3,40,50,1],[4,4,888,888,1]])
+        ref=self.root/'model.gcode'
+        ref.write_text(';START_OF_HEADER\n;FLAVOR:Griffin\n;TARGET_MACHINE.NAME:Ultimaker S3\n;END_OF_HEADER\nM104 S210\nG0 X0 Y0 Z0.3\n;LAYER:0\nG1 X10 Y0 E1\n')
+        summary=run(self.args(path,'--reference',str(ref),'--print-start-seconds','1','--print-end-seconds','3'))
+        self.assertEqual(summary['rejected_point_reasons']['outside_print_window'],2)
+        report=(self.root/'out/reconstructed_griffin_analysis.gcode').read_text()
+        self.assertIn(';REFERENCE.TARGET_MACHINE.NAME:Ultimaker S3',report)
+        self.assertIn('u=20.000000',report)
+        self.assertNotIn('u=999.',report)
+        self.assertNotIn('u=888.',report)
+        self.assertNotIn('\nM104',report)
+        self.assertNotIn('\nG1 ',report)
+        self.assertEqual(summary['segments'],2)
+
+    def test_print_window_requires_both_times(self):
+        with self.assertRaises(ValueError):
+            run(self.args(self.fixture(),'--print-start-seconds','1'))
+
     def test_multilayer_islands_and_unknown(self):
         summary=run(self.args(self.fixture(),'--per-layer-plots'))
         self.assertEqual(summary['observed_layer_order'],['0','2'])
@@ -46,6 +66,34 @@ class ReconstructionTests(unittest.TestCase):
     def test_side_rejects_bed_promotion(self):
         path=self.csv('side.csv',['x_mm','y_mm','view_mode'],[[0,0,'side_view']])
         with self.assertRaises(ValueError):load_trajectory(path)
+    def test_side_xy_requires_explicit_fitted_calibration(self):
+        path=self.csv('side.csv',['frame_index','x_mm','y_mm','view_mode','coordinate_source'],
+                      [[0,12,34,'side_view','calibrated_side_xy']])
+        calibration=self.root/'side_calibration.json'
+        calibration.write_text(json.dumps({
+            'version':1,'coordinate_space':'bed_mm','coordinate_model':'calibrated_side_xy',
+            'side_to_bed_xy':True,
+        }))
+        trajectory=load_trajectory(path,calibration=calibration)
+        self.assertEqual(trajectory.space,'bed_mm')
+        self.assertEqual(trajectory.points[0].xy,(12,34))
+        self.assertIn('calibrated_side_to_bed_xy',trajectory.points[0].provenance)
+    def test_side_xy_calibration_reaches_analysis_gcode_export(self):
+        path=self.csv('side_xy.csv',
+                      ['frame_index','time_seconds','x_mm','y_mm','view_mode','coordinate_source','tracking_valid','calibration_valid'],
+                      [[0,0,20,30,'side_view','calibrated_side_xy',1,1],
+                       [1,.1,21,30,'side_view','calibrated_side_xy',1,1],
+                       [2,.2,22,31,'side_view','calibrated_side_xy',1,1]])
+        calibration=self.root/'side_calibration.json'
+        calibration.write_text(json.dumps({
+            'version':1,'coordinate_space':'bed_mm','coordinate_model':'calibrated_side_xy',
+            'side_to_bed_xy':True,
+        }))
+        args=self.args(path,'--calibration',str(calibration))
+        summary=run(args)
+        self.assertTrue(summary['bed_xy_commands_available'])
+        gcode=(self.root/'out/reconstructed_path_only.gcode').read_text()
+        self.assertIn('G1 X21.000000 Y30.000000',gcode)
     def test_state_join_and_missing_layers(self):
         path=self.csv('a.csv',['frame_index','x_mm','y_mm'],[[7,1,2],[8,2,3]])
         states=self.csv('states.csv',['frame_index','layer_index','motion_state','confidence'],[[8,5,'travel',.8]])

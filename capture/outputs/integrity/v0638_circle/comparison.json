@@ -1,0 +1,21 @@
+{
+  "label": "6:38 PM video vs circle G-code",
+  "gcode": "inputs/gcode/circle/model.gcode",
+  "track": "outputs/integrity/tracks/v0638.csv",
+  "calibration": "outputs/integrity/calibration.json",
+  "print_start_video_s": 236.95250472246022,
+  "print_end_video_s": 246.17882067697226,
+  "time_scale": 1.0375,
+  "frames_compared": 275,
+  "tracking_coverage": 0.9985025491670616,
+  "time_aligned_rmse_mm": 6.407583022013312,
+  "time_aligned_p95_mm": 11.538638248359328,
+  "time_aligned_max_mm": 16.60295793166807,
+  "path_deviation_mean_mm": 3.6860999841470323,
+  "path_deviation_p95_mm": 10.168549592116062,
+  "reference_covered_fraction": 0.9694940476190477,
+  "hausdorff_mm": 11.698946565703304,
+  "tolerance_mm": 10.3,
+  "verdict": "CONSISTENT with G-code",
+  "verdict_rule": "p95 path deviation <= 10.3 mm AND >= 90% of the commanded print path has an observed point within 10.3 mm"
+}

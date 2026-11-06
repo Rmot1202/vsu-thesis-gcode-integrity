@@ -6,3 +6,24 @@ __pycache__/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+
+# Generated analyses and training artifacts
+capture/outputs/post_analysis/
+capture/outputs/training/
+capture/assets/models/*
+!capture/assets/models/printer_head/
+capture/inputs/training_archives/
+training-output/
+.venv-training/
+*.pt
+
+# Trained printer-head detector used by the integrity check (5 MB) is tracked
+!capture/assets/models/printer_head/best.pt
+
+# Raw videos are too large for git (keep them in OneDrive / inputs/videos)
+*.mov
+*.MOV
+*.mp4
+capture/inputs/videos/
+capture/inputs/training_videos/*
+._*

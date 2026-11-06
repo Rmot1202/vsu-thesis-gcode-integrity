@@ -9,8 +9,8 @@ import sys
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 import cv2
 import numpy as np
-from experiment_log import Experiment,startup_cleanup,process_experiment,MARKER,TEST_MARKER
-from side_camera.side_nozzle_tracker import RedStripTracker
+from backend.experiment_log import Experiment,startup_cleanup,process_experiment,MARKER,TEST_MARKER
+from cameras.side.side_nozzle_tracker import RedStripTracker
 
 
 class ExperimentTests(unittest.TestCase):
@@ -93,7 +93,7 @@ class ExperimentTests(unittest.TestCase):
         for i in range(6):writer.write(np.full((240,320,3),100+i,np.uint8))
         writer.release()
         base=Path(__file__).resolve().parents[1]
-        for view,relative in [('side_view','side_camera/side_nozzle_tracker.py'),('up_view','upward_camera/nozzle_grid_tracker.py'),('up_auto_view','upward_camera/auto_nozzle_tracker.py')]:
+        for view,relative in [('side_view','cameras/side/side_nozzle_tracker.py'),('up_view','cameras/top/nozzle_grid_tracker.py'),('up_auto_view','cameras/top/auto_nozzle_tracker.py')]:
             spec=importlib.util.spec_from_file_location(view,base/relative);module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
             args=['--input',str(video),'--runs-dir',str(self.root/view),'--no-reference-prompt']
             if view=='up_auto_view':args+=['--headless','--manual']
@@ -102,7 +102,7 @@ class ExperimentTests(unittest.TestCase):
             folders=[p for p in (self.root/view).iterdir() if p.is_dir()]
             self.assertEqual(len(folders),1)
             folder=folders[0]
-            for name in ['raw_video.mp4','annotated_video.mp4','trajectory.csv','metadata.json','reconstructed_path_only.gcode','comparison_summary.txt','README.md','WORKFLOW.md','OUTPUTS.md']:
+            for name in ['raw_video.mp4','annotated_video.mp4','trajectory.csv','metadata.json','reconstructed_path_only.gcode','comparison_summary.txt','RUN_INFO.txt']:
                 self.assertTrue((folder/name).is_file(),(view,name))
             meta=json.loads((folder/'metadata.json').read_text())
             self.assertEqual(meta['capture_status'],'finished');self.assertEqual(meta['processing_status'],'complete')

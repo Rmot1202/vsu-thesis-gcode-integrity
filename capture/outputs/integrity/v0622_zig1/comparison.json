@@ -1,0 +1,21 @@
+{
+  "label": "6:22 PM video vs zig1 G-code",
+  "gcode": "inputs/gcode/zig1/model.gcode",
+  "track": "outputs/integrity/tracks/v0622.csv",
+  "calibration": "outputs/integrity/calibration.json",
+  "print_start_video_s": 363.75536706447406,
+  "print_end_video_s": 375.9985971941093,
+  "time_scale": 1.0225,
+  "frames_compared": 366,
+  "tracking_coverage": 0.9984619965935322,
+  "time_aligned_rmse_mm": 6.079606329877029,
+  "time_aligned_p95_mm": 10.540649446264116,
+  "time_aligned_max_mm": 15.8167630273251,
+  "path_deviation_mean_mm": 3.4952061381160613,
+  "path_deviation_p95_mm": 7.654354412022149,
+  "reference_covered_fraction": 1.0,
+  "hausdorff_mm": 10.46383022138886,
+  "tolerance_mm": 10.3,
+  "verdict": "CONSISTENT with G-code",
+  "verdict_rule": "p95 path deviation <= 10.3 mm AND >= 90% of the commanded print path has an observed point within 10.3 mm"
+}

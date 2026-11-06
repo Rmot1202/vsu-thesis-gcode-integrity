@@ -1,0 +1,21 @@
+{
+  "label": "5:39 PM video vs rectangle G-code (repeat print, held out)",
+  "gcode": "inputs/gcode/rectangle/model.gcode",
+  "track": "outputs/integrity/tracks/v0539.csv",
+  "calibration": "outputs/integrity/calibration.json",
+  "print_start_video_s": 261.57102000827535,
+  "print_end_video_s": 279.52684099169085,
+  "time_scale": 0.995,
+  "frames_compared": 538,
+  "tracking_coverage": 1.0007451074825136,
+  "time_aligned_rmse_mm": 3.4379025420613014,
+  "time_aligned_p95_mm": 6.696037694325826,
+  "time_aligned_max_mm": 13.181880624635133,
+  "path_deviation_mean_mm": 1.4225097765456305,
+  "path_deviation_p95_mm": 3.7707871877197996,
+  "reference_covered_fraction": 1.0,
+  "hausdorff_mm": 7.198732614265641,
+  "tolerance_mm": 10.3,
+  "verdict": "CONSISTENT with G-code",
+  "verdict_rule": "p95 path deviation <= 10.3 mm AND >= 90% of the commanded print path has an observed point within 10.3 mm"
+}

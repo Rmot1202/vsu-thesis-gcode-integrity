@@ -1,0 +1,21 @@
+{
+  "model": "yolo11n.pt",
+  "dataset": "/Users/RavenMott1/Library/CloudStorage/OneDrive-SharedLibraries-VirginiaStateUniversity/Thesis - Documents/code/capture/post_analysis/training/dataset",
+  "class_names": [
+    "printer_head"
+  ],
+  "epochs": 80,
+  "image_size": 640,
+  "batch": 16,
+  "device": "cpu",
+  "best_weights": "/Users/RavenMott1/Library/CloudStorage/OneDrive-SharedLibraries-VirginiaStateUniversity/Thesis - Documents/code/capture/post_analysis/training/dataset/runs/printer-head-3/weights/best.pt",
+  "last_weights": "/Users/RavenMott1/Library/CloudStorage/OneDrive-SharedLibraries-VirginiaStateUniversity/Thesis - Documents/code/capture/post_analysis/training/dataset/runs/printer-head-3/weights/last.pt",
+  "results_csv": "/Users/RavenMott1/Library/CloudStorage/OneDrive-SharedLibraries-VirginiaStateUniversity/Thesis - Documents/code/capture/post_analysis/training/dataset/runs/printer-head-3/results.csv",
+  "metrics": {
+    "metrics/precision(B)": 0.9995072462975383,
+    "metrics/recall(B)": 1.0,
+    "metrics/mAP50(B)": 0.995,
+    "metrics/mAP50-95(B)": 0.8124556745037991,
+    "fitness": 0.8124556745037991
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "label": "circle.mov video vs zig G-code",
+  "gcode": "inputs/gcode/zig/model.gcode",
+  "track": "outputs/integrity/tracks/vcircle.csv",
+  "calibration": "outputs/integrity/calibration.json",
+  "print_start_video_s": 258.2415188028042,
+  "print_end_video_s": 277.08392478878307,
+  "time_scale": 1.025,
+  "frames_compared": 560,
+  "tracking_coverage": 1.0015706069613928,
+  "time_aligned_rmse_mm": 5.692566845294164,
+  "time_aligned_p95_mm": 10.087550063373246,
+  "time_aligned_max_mm": 18.737412599859777,
+  "path_deviation_mean_mm": 3.1468890309971385,
+  "path_deviation_p95_mm": 6.706611989620676,
+  "reference_covered_fraction": 1.0,
+  "hausdorff_mm": 10.685755669497192,
+  "tolerance_mm": 10.3,
+  "verdict": "CONSISTENT with G-code",
+  "verdict_rule": "p95 path deviation <= 10.3 mm AND >= 90% of the commanded print path has an observed point within 10.3 mm"
+}

@@ -1,0 +1,52 @@
+name: Train reviewed printer-head dataset
+on:
+  workflow_dispatch:
+    inputs:
+      dataset_dir:
+        description: Absolute path to reviewed dataset on the runner (outside checkout)
+        required: true
+        type: string
+      epochs:
+        default: '80'
+        type: string
+      device:
+        description: 'Training device: cpu, mps, or 0'
+        default: cpu
+        type: string
+      min_map:
+        description: Minimum validation mAP50-95 to accept the candidate
+        default: '0.5'
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: printer-head-training
+  cancel-in-progress: false
+jobs:
+  train:
+    runs-on: [self-hosted, printer-head-training]
+    env:
+      REVIEWED_DATASET: ${{ inputs.dataset_dir }}
+      TRAIN_EPOCHS: ${{ inputs.epochs }}
+      TRAIN_DEVICE: ${{ inputs.device }}
+      MIN_MAP: ${{ inputs.min_map }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install training dependencies
+        run: |
+          python3 -m venv .venv-training
+          .venv-training/bin/python -m pip install -r capture/requirements.txt -r capture/backend/post_analysis/training/requirements.txt
+      - name: Check dataset and model proposal logic
+        run: .venv-training/bin/python -m unittest discover -s capture/tests -p test_yolo_training_pipeline.py
+      - name: Train and evaluate reviewed data
+        run: |
+          .venv-training/bin/python capture/backend/post_analysis/training/train_yolo.py --dataset-dir "$REVIEWED_DATASET" --epochs "$TRAIN_EPOCHS" --device "$TRAIN_DEVICE" --min-map "$MIN_MAP" --project "$GITHUB_WORKSPACE/training-output" --name printer-head
+      - name: Upload accepted model and metrics
+        uses: actions/upload-artifact@v4
+        with:
+          name: printer-head-${{ github.run_id }}
+          path: |
+            training-output/**/weights/best.pt
+            training-output/**/training_summary.json
+            training-output/**/results.csv
+          if-no-files-found: error
