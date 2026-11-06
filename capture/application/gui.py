@@ -13,6 +13,7 @@ from tkinter import filedialog, messagebox, ttk
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from application.side_xy_calibration_gcode import prepare_calibration_copy
+from application.integrity_tab import IntegrityTab
 
 try:
     from tkinterdnd2 import DND_FILES, TkinterDnD
@@ -72,8 +73,8 @@ def is_gcode(path):
 class ReconstructionApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Camera XY G-code Reconstructor")
-        self.root.minsize(620, 480)
+        self.root.title("Camera G-code Integrity")
+        self.root.minsize(980, 640)
         self.process = None
         self.log = None
         self.calibration_process = None
@@ -87,7 +88,9 @@ class ReconstructionApp:
         self.input_source = tk.StringVar(value="0")
         self.calibration_source = tk.StringVar(value="0")
         self.view_mode = tk.StringVar(value="Side view")
-        default_model = ROOT / "outputs/training/legacy_dataset/runs/printer-head-3/weights/best.pt"
+        default_model = ROOT / "assets/models/printer_head/best.pt"
+        if not default_model.is_file():
+            default_model = ROOT / "outputs/training/legacy_dataset/runs/printer-head-3/weights/best.pt"
         self.model = tk.StringVar(value=str(default_model) if default_model.is_file() else "")
         self.side_calibration = tk.StringVar()
         self.output = tk.StringVar()
@@ -97,8 +100,12 @@ class ReconstructionApp:
         self.root.protocol("WM_DELETE_WINDOW", self._close)
 
     def _build(self):
-        frame = ttk.Frame(self.root, padding=22)
-        frame.pack(fill="both", expand=True)
+        notebook = ttk.Notebook(self.root)
+        notebook.pack(fill="both", expand=True)
+        self.integrity = IntegrityTab(notebook, self.root)
+        notebook.add(self.integrity.frame, text="Integrity check (video vs G-code)")
+        frame = ttk.Frame(notebook, padding=22)
+        notebook.add(frame, text="Live capture / reconstruction")
         ttk.Label(frame, text="Camera XY G-code Reconstructor", font=("", 18, "bold")).pack(anchor="w")
         ttk.Label(
             frame,
@@ -595,6 +602,7 @@ class ReconstructionApp:
             self.stop_file = None
 
     def _close(self):
+        self.integrity.stop()
         if self.process is not None and self.process.poll() is None:
             self.closing = True
             self._stop_capture()

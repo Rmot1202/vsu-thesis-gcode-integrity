@@ -27,3 +27,7 @@ training-output/
 capture/inputs/videos/
 capture/inputs/training_videos/*
 ._*
+
+# Live-capture run records stay local
+capture/outputs/runs/
+capture/outputs/integrity/gui_last_run.log

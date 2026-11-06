@@ -16,6 +16,20 @@ Code lives in `backend/integrity/` (layers: `gcode_timeline` → `track` →
 `mapping` → `align` → `compare`) and the command-line entry point is
 `application/integrity_check.py`.
 
+## Desktop app
+
+```bash
+python application/gui.py      # opens on the "Integrity check" tab
+```
+
+Choose the print video and its G-code; the calibration and model fields are
+pre-filled. Saved head tracks in `outputs/integrity/tracks/` (matched by the
+original recording name) are reused, so the six 10-8-26 videos check in a few
+seconds. New videos are tracked once (a few minutes on CPU, choose `mps` on an
+Apple-silicon Mac) and the track is saved for next time.
+
+![GUI](../outputs/integrity/gui_screenshot.png)
+
 ## Commands
 
 Run from `capture/` (Python 3.10+, `pip install -r requirements.txt`).

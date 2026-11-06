@@ -6,7 +6,17 @@ Start the desktop app from the `capture/` directory:
 python application/gui.py
 ```
 
-The GUI defaults to side view and offers top view as an alternative. Side-view
+The window has two tabs:
+
+- **Integrity check (video vs G-code)** — pick a recorded print, the G-code it
+  should have printed, and the camera calibration, then click *Run integrity
+  check*. The PASS/FAIL result and the side-by-side figure appear in the window;
+  files are saved in `outputs/integrity/<video>_<gcode>/`. *Calibrate camera
+  from this video + G-code* builds a new calibration from a print you trust.
+  See [integrity.md](integrity.md).
+- **Live capture / reconstruction** — the original live-camera workflow.
+
+The capture tab defaults to side view and offers top view as an alternative. Side-view
 XY requires a trained printer-head model and a validated side-to-bed
 calibration. See [training](training.md), [side-camera setup](side-view.md),
 and [top-camera calibration](top-camera-calibration.md).
@@ -22,7 +32,7 @@ and [top-camera calibration](top-camera-calibration.md).
 | `inputs/` | Reference G-code, sample data, videos, and imported archives |
 | `outputs/` | Camera runs, analyses, training datasets, and generated results |
 | `assets/` | Model weights and CAD/project assets |
-| `docs/` | All project Markdown documentation and archived run guides |
+| `docs/` | All project Markdown documentation |
 | `tests/` | Automated regression and integration tests |
 
 ## Documentation
@@ -39,8 +49,6 @@ and [top-camera calibration](top-camera-calibration.md).
 - [Post-analysis](post-analysis.md), [legacy tools](legacy.md), and
   [reference example](square-reference.md)
 
-Permanent historical run documentation is kept in this folder as
-`run_<run-name>_<document>.md`; these snapshots retain the original run-time
-paths for provenance and are not current instructions. The corresponding run
-data is in `outputs/runs/<run-name>/`; use the centralized guides above for
-current commands and locations.
+Camera runs created by the live-capture tab are written to `outputs/runs/`
+(kept locally, not committed to git). The old 2026-10-02 runs were removed from
+the repository: they had no calibration, so no comparison was possible.
