@@ -8,7 +8,8 @@ from pathlib import Path
 import numpy as np
 
 from backend.integrity.gcode_timeline import load_timeline
-from backend.integrity.compare import calibrate, compare
+from backend.integrity import mapping
+from backend.integrity.compare import calibrate, calibrate_multi, compare
 
 HEADER = """;FLAVOR:Marlin
 ;LAYER_COUNT:1
@@ -54,6 +55,7 @@ def write_track(path, gcode, start_s=5.0, fps=30.0, pad_s=3.0, noise=0.0, seed=0
 
 
 RECT = [(40, 20), (190, 20), (190, 170), (40, 170), (40, 20), (190, 20)]
+RECT2 = [(30, 15), (200, 15), (200, 180), (30, 180), (30, 15)]
 ZIG = [(40, 40), (190, 40), (190, 80), (40, 80), (40, 120), (190, 120), (190, 160), (40, 160)]
 
 
@@ -84,6 +86,45 @@ class IntegrityTests(unittest.TestCase):
         self.assertTrue(bad["verdict"].startswith("DEVIATES"), bad)
         self.assertTrue((self.tmp / "good" / "side_by_side.png").exists())
         self.assertTrue((self.tmp / "good" / "observed_bed_path.csv").exists())
+
+
+    def test_poly_design_shapes(self):
+        obs = {k: np.linspace(280, 400, 20) for k in ("px", "py", "w", "h")}
+        self.assertEqual(mapping.design(obs, "poly2")[0].shape, (20, 15))
+        self.assertEqual(mapping.design(obs, "poly3")[0].shape, (20, 35))
+
+    def test_extrapolation_mask(self):
+        obs = {k: np.array([300.0, 350.0, 900.0]) for k in ("px", "py", "w", "h")}
+        bounds = {k: [290.0, 360.0] for k in ("px", "py", "w", "h")}
+        np.testing.assert_array_equal(mapping.extrapolated(obs, bounds), [False, False, True])
+        self.assertFalse(mapping.extrapolated(obs, None).any())
+
+    def _multi(self, model="poly3"):
+        write_gcode(self.tmp / "rect2.gcode", RECT2)
+        write_track(self.tmp / "rect2.csv", self.tmp / "rect2.gcode", start_s=4.0, noise=0.5, seed=2)
+        pairs = [(self.tmp / "rect.csv", self.tmp / "rect.gcode"),
+                 (self.tmp / "rect2.csv", self.tmp / "rect2.gcode"),
+                 (self.tmp / "zig.csv", self.tmp / "zig.gcode")]
+        return calibrate_multi(pairs, self.tmp / "multi.json", model=model)
+
+    def test_multi_calibration_recovers_starts_and_lovo(self):
+        cal = self._multi()
+        starts = [p["print_start_video_s"] for p in cal["calibration_prints"]]
+        np.testing.assert_allclose(starts, [5.0, 4.0, 7.0], atol=0.15)
+        self.assertEqual(cal["mapping_model"], "poly3")
+        self.assertLess(cal["holdout_rmse_mm"], 2.0)
+        self.assertLessEqual(cal["fit_rmse_mm"], cal["holdout_rmse_mm"] + 1e-9)
+        self.assertIn("feature_bounds", json.loads((self.tmp / "multi.json").read_text()))
+        for p in cal["calibration_prints"]:
+            self.assertGreater(p["lovo_within_5mm_pct"], 95)
+
+    def test_multi_calibration_compare_and_extrapolation(self):
+        self._multi()
+        good = compare(self.tmp / "zig.csv", self.tmp / "zig.gcode", self.tmp / "multi.json", None, make_figures=False)
+        bad = compare(self.tmp / "zig.csv", self.tmp / "rect.gcode", self.tmp / "multi.json", None, make_figures=False)
+        self.assertTrue(good["verdict"].startswith("CONSISTENT"), good)
+        self.assertTrue(bad["verdict"].startswith("DEVIATES"), bad)
+        self.assertLess(good["extrapolated_fraction"], 0.05)
 
 
 if __name__ == "__main__":

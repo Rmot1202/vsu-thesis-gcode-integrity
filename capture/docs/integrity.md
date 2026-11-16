@@ -41,9 +41,15 @@ Raw videos are not in git; put them (or links to them) in `inputs/videos/`. The 
 python application/integrity_check.py track --video "inputs/videos/Movie on 10-8-26 at 5.21 PM.mov" \
     --output outputs/integrity/tracks/v0521.csv          # add --device mps on an Apple-silicon Mac
 
-# 2. Calibrate the camera ONCE from a print whose G-code you trust (rectangle, 5:21 PM video)
-python application/integrity_check.py calibrate --track outputs/integrity/tracks/v0521.csv \
-    --gcode inputs/gcode/rectangle/model.gcode --output outputs/integrity/calibration.json
+# 2. Calibrate the camera ONCE from prints whose G-code you trust.
+#    Several prints (repeat --track/--gcode) -> poly3 mapping + leave-one-video-out accuracy:
+G=inputs/gcode; T=outputs/integrity/tracks
+python application/integrity_check.py calibrate \
+    --track $T/v0521.csv --gcode $G/rectangle/model.gcode --track $T/v0539.csv --gcode $G/rectangle/model.gcode \
+    --track $T/v0622.csv --gcode $G/zig1/model.gcode     --track $T/v0638.csv --gcode $G/circle/model.gcode \
+    --track $T/vcircle.csv --gcode $G/zig/model.gcode    --output outputs/integrity/calibration.json
+#    One print only (old behaviour, pinhole_plus):
+#    ... calibrate --track $T/v0521.csv --gcode $G/rectangle/model.gcode --output outputs/integrity/calibration_single_rect.json
 
 # 3. Check another print against the G-code that was supposed to run
 python application/integrity_check.py compare --track outputs/integrity/tracks/v0622.csv \
@@ -89,6 +95,18 @@ printer) depth is printer **Y**; the new calibration records
    calibration target with ~535 known points: the code searches the print
    start time and speed scale, fits the mapping, re-registers, and refits.
    Accuracy is reported on held-out data (fit on even 1-s blocks, test on odd).
+
+   **Multi-print calibration (current default, `calibrate_multi`).** With
+   several trusted prints the code fits one `poly3` surface (all monomials up
+   to degree 3 of the normalised cues `(u-810)/w`, `400/w`, `(v-315)/20`,
+   `150/h`; 35 coefficients per axis, column-scaled least squares). It
+   alternates "fit on all prints" and "re-register each print in time" twice.
+   Accuracy is **leave-one-video-out (LOVO)**: each print is predicted by a
+   mapping fitted only on the other prints and re-registered with it, exactly
+   as a new video would be. The calibration stores the image-cue range it was
+   fitted on, and every comparison reports `extrapolated_fraction` (share of
+   frames whose box centre/width fall outside that range): a high-order
+   polynomial is only trustworthy inside the area the calibration prints covered.
 4. **Comparison** (`align.py`, `compare.py`). For a new video the mapping is
    fixed and only the time offset/scale are searched. Metrics:
    time-aligned RMSE, path deviation (each observed point to the nearest
@@ -98,28 +116,52 @@ printer) depth is printer **Y**; the new calibration records
    The default tolerance is 2.5 × the calibration held-out RMSE (min 5 mm),
    so a better calibration automatically gives a stricter check.
 
-## Results on the 10-8-26 recordings (calibration = 5:21 PM rectangle)
+## Results on the 10-8-26 recordings
 
-Calibration: fit RMSE 3.4 mm, **held-out RMSE 4.1 mm** over X 35–195 mm,
-Y 15–180 mm (plain pinhole without the extra terms: 8.6 mm). Tolerance 10.3 mm.
+Calibration: `poly3` fitted on five trusted prints (2 rectangles, zig1, circle,
+zig; 2264 frames) covering X 30–200 mm, Y 15–180 mm. Fit RMSE 2.76 mm,
+**LOVO RMSE 3.18 mm** (previous single-rectangle `pinhole_plus`: held-out
+4.12 mm, kept as `outputs/integrity/calibration_single_rect.json`). The
+tolerance follows automatically: 2.5 × 3.18 → **7.9 mm** (was 10.3 mm).
 
-| Video (10-8-26) | Printed G-code (found automatically) | Print starts in video | Time scale | p95 path deviation | Coverage | Verdict | Figure |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| 5:21 PM | rectangle (calibration, in-sample) | 367.2 s | 0.99 | 4.2 mm | 100% | CONSISTENT | [side-by-side](../outputs/integrity/v0521_rectangle_calibration/side_by_side.png) |
-| 5:39 PM | rectangle (repeat print, **held out**) | 261.6 s | 0.99 | 3.8 mm | 100% | CONSISTENT | [side-by-side](../outputs/integrity/v0539_rectangle/side_by_side.png) |
-| 6:22 PM | zig1 (4 strokes) | 363.8 s | 1.02 | 7.7 mm | 100% | CONSISTENT | [side-by-side](../outputs/integrity/v0622_zig1/side_by_side.png) |
-| 6:38 PM | circle | 237.0 s | 1.04 | 10.2 mm | 97% | CONSISTENT | [side-by-side](../outputs/integrity/v0638_circle/side_by_side.png) |
-| circle.mov | **zig** (6 strokes) — the file name is misleading | 258.2 s | 1.02 | 6.7 mm | 100% | CONSISTENT | [side-by-side](../outputs/integrity/circlemov_zig/side_by_side.png) |
-| 5:39 PM vs wrong file | circle (negative control) | — | — | 60.6 mm | 0% | DEVIATES | [side-by-side](../outputs/integrity/v0539_vs_wrong_circle/side_by_side.png) |
-| 5:49 PM | none of the five files in `builds/` | — | — | ≥ 19 mm | — | no match | — |
+Every per-video row below is **held out**: it uses
+`outputs/integrity/calibration_lovo_<video>.json`, fitted on the other four
+prints only. No frame in any comparison was outside the calibrated cue range
+(`extrapolated_fraction` = 0).
+
+| Video (10-8-26) | G-code | Print starts | Time scale | Time-aligned RMSE (old → new) | p95 path deviation (old → new) | Coverage | Verdict | Figure |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 5:21 PM | rectangle | 367.2 s | 0.985 | 3.32 (in-sample) → **2.83** mm | 4.20 → **4.20** mm | 100% | CONSISTENT | [side-by-side](../outputs/integrity/v0521_rectangle_calibration/side_by_side.png) |
+| 5:39 PM | rectangle (repeat) | 261.6 s | 0.985 | 3.44 → **3.02** mm | 3.77 → **2.97** mm | 100% | CONSISTENT | [side-by-side](../outputs/integrity/v0539_rectangle/side_by_side.png) |
+| 6:22 PM | zig1 | 363.8 s | 1.020 | 6.08 → **3.40** mm | 7.65 → **2.92** mm | 100% | CONSISTENT | [side-by-side](../outputs/integrity/v0622_zig1/side_by_side.png) |
+| 6:38 PM | circle | 236.9 s | 1.038 | 6.41 → **3.57** mm | 10.17 → **3.59** mm | 97 → 100% | CONSISTENT | [side-by-side](../outputs/integrity/v0638_circle/side_by_side.png) |
+| circle.mov | **zig** (file name is misleading) | 258.3 s | 1.022 | 5.69 → **3.26** mm | 6.71 → **2.34** mm | 100% | CONSISTENT | [side-by-side](../outputs/integrity/circlemov_zig/side_by_side.png) |
+| 5:39 PM vs wrong file | circle (negative control) | — | — | 58.4 → 57.6 mm | 60.6 → 62.1 mm | 0% | DEVIATES | [side-by-side](../outputs/integrity/v0539_vs_wrong_circle/side_by_side.png) |
+| 5:49 PM | none of the five files | — | — | — | — | — | no match | — |
+
+Mean over the five prints: time-aligned RMSE 5.0 → 3.2 mm, p95 path
+deviation 6.5 → 3.2 mm. The 5:21 PM "old" numbers were in-sample (it was the
+calibration print), so its new held-out 2.83 mm is a real improvement.
+Hausdorff (worst single frame) did not improve everywhere (5:39 PM: 7.2 →
+14.3 mm); it is driven by one-frame detector glitches, which is why the
+verdict uses p95.
+
+**Caveat (report it).** LOVO works here because the two rectangle prints
+cover the bed corners for each other. Holding out *both* rectangles (fit on
+zig1/circle/zig only) gives ≈ 12.9 mm RMSE: the cubic surface extrapolates
+badly outside the calibrated area. The calibration print set must cover the
+whole bed; `extrapolated_fraction` flags videos where it does not.
 
 ![rectangle, held-out repeat](../outputs/integrity/v0539_rectangle/side_by_side.png)
 ![circle](../outputs/integrity/v0638_circle/side_by_side.png)
 
-The matrix below runs every video against every G-code. The correct G-code is
-the only PASS in each row, and the next-closest wrong G-code is at least
-~2× further away. That separation is the thesis evidence that a single camera
-can tell whether the commanded first layer was printed.
+The matrix below runs every video against every G-code with the full
+five-print calibration (diagonal cells are therefore in-sample; the off-diagonal
+cells are the wrong-G-code tests). The correct G-code is the
+only PASS in each row (p95 1.9–3.0 mm, was 3.8–10.2 mm) and the closest wrong
+G-code is 21.6 mm away, so the margin between "right file" and "wrong file"
+grew from about 2× to about 7×. The 5:49 PM video matches nothing (closest
+20.2 mm).
 
 ![matrix](../outputs/integrity/matrix/matrix.png)
 
@@ -130,7 +172,8 @@ can tell whether the commanded first layer was printed.
   changes the head's image height; see ideas below.
 - **Head box, not nozzle tip.** YOLO tracks the print-head housing; ~4 mm
   residual wobble in Y comes from box-width jitter (depth from width is the
-  weakest axis). Coverage and path deviation are robust to this, time-aligned
+  weakest axis: the box width spans only 281–398 px over 165 mm of Y, i.e.
+  1–2 mm per pixel, versus ≈ 0.2 mm/px in X). Coverage and path deviation are robust to this, time-aligned
   RMSE less so.
 - **Timing model is approximate.** A global time scale (0.85–1.35) is fitted;
   the jerk planner keeps it near 1.0 for these prints.

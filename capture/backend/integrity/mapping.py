@@ -15,6 +15,14 @@ least squares.  ``pinhole`` is the original two-equation model used by
 ``cameras/side/printer_xy_calibration.py``; ``pinhole_plus`` (default) adds
 the height, image-y and lens-curvature terms, which cut the held-out Y error
 roughly in half on the 10-8-26 recordings.
+
+``poly2`` / ``poly3`` are full polynomial surfaces (degree 2 / 3) in four
+normalised cues: perspective-scaled horizontal offset ``(px - cx0)/w``,
+inverse width ``1/w``, image height ``py`` and inverse box height ``1/h``.
+They absorb lens distortion and the camera's small pitch/roll, but they have
+10/35 coefficients per axis and extrapolate badly, so fit them on several
+calibration prints that together cover the bed (``calibrate_multi``) and
+check ``extrapolated_fraction`` in the comparison output.
 """
 from __future__ import annotations
 
@@ -23,7 +31,18 @@ from pathlib import Path
 
 import numpy as np
 
-MODELS = ("pinhole", "pinhole_yaw", "pinhole_plus")
+MODELS = ("pinhole", "pinhole_yaw", "pinhole_plus", "poly2", "poly3")
+POLY_DEGREE = {"poly2": 2, "poly3": 3}
+
+
+def _poly_terms(base, degree):
+    from itertools import combinations_with_replacement
+
+    cols = [np.ones(len(base))]
+    for d in range(1, degree + 1):
+        for idx in combinations_with_replacement(range(base.shape[1]), d):
+            cols.append(np.prod(base[:, list(idx)], axis=1))
+    return np.column_stack(cols)
 
 
 def design(obs, model="pinhole_plus", cx0=None):
@@ -39,14 +58,42 @@ def design(obs, model="pinhole_plus", cx0=None):
         c = (px - (cx0 if cx0 is not None else 810.0)) * v
         return (np.column_stack((u, v, one, c * c)),
                 np.column_stack((v, 1.0 / h, one, u, c * c, py, py * v)))
+    if model in POLY_DEGREE:
+        x0 = cx0 if cx0 is not None else 810.0
+        base = np.column_stack(((px - x0) * v, 400.0 * v, (py - 315.0) / 20.0, 150.0 / h))
+        f = _poly_terms(base, POLY_DEGREE[model])
+        return f, f
     raise ValueError(f"Unknown mapping model {model}; choose from {MODELS}")
+
+
+def _lstsq(f, y):
+    """Least squares with column scaling (the polynomial terms differ by orders of magnitude)."""
+    scale = np.abs(f).max(axis=0)
+    scale[scale == 0] = 1.0
+    return np.linalg.lstsq(f / scale, y, rcond=None)[0] / scale
+
+
+def feature_bounds(obs):
+    """Range of the image cues seen during calibration (for extrapolation checks)."""
+    return {k: [float(np.min(obs[k])), float(np.max(obs[k]))] for k in ("px", "py", "w", "h")}
+
+
+def extrapolated(obs, bounds, margin=0.03):
+    """Boolean mask of observations outside the calibrated cue range (+/- margin of the span)."""
+    if not bounds:
+        return np.zeros(len(obs["px"]), dtype=bool)
+    out = np.zeros(len(obs["px"]), dtype=bool)
+    for k in ("px", "w"):
+        lo, hi = bounds[k]
+        pad = margin * (hi - lo)
+        x = np.asarray(obs[k], float)
+        out |= (x < lo - pad) | (x > hi + pad)
+    return out
 
 
 def fit(obs, target_xy, model="pinhole_plus", cx0=810.0):
     hx, hy = design(obs, model, cx0)
-    cx = np.linalg.lstsq(hx, target_xy[:, 0], rcond=None)[0]
-    cy = np.linalg.lstsq(hy, target_xy[:, 1], rcond=None)[0]
-    return cx, cy
+    return _lstsq(hx, target_xy[:, 0]), _lstsq(hy, target_xy[:, 1])
 
 
 def apply(cx, cy, obs, model="pinhole_plus", cx0=810.0):
@@ -71,6 +118,7 @@ class BedMapper:
         self.cx0 = calibration.get("image_center_x_px", 810.0)
         self.cx = np.asarray(calibration["x_coefficients"], float)
         self.cy = np.asarray(calibration["y_coefficients"], float)
+        self.bounds = calibration.get("feature_bounds")
 
     def __call__(self, obs):
         return apply(self.cx, self.cy, obs, self.model, self.cx0)

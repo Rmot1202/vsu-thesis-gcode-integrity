@@ -71,6 +71,98 @@ def calibrate(track_csv, gcode, output_json, model="pinhole_plus", holdout_block
     return cal
 
 
+def _register_with(track, dense, mapper, near=None):
+    """Time registration with a fixed mapping; ``near`` = (offset, scale) narrows the search."""
+    if near is None:
+        return register(track, dense, mapper=mapper)
+    o, s = near
+    return register(track, dense, mapper=mapper, scales=np.arange(s - 0.05, s + 0.051, 0.005), coarse_step=0.05)
+
+
+def _windowed(track, dense, reg):
+    tau = (track["t"] - reg["offset"]) / reg["scale"]
+    sel = (tau >= 0) & (tau <= dense.duration)
+    return mapping.subset(track, sel), dense(tau[sel]), dense.extruding(tau[sel])
+
+
+def calibrate_multi(pairs, output_json, model="poly3", iterations=2):
+    """Fit one camera->bed mapping from several trusted prints (video track + G-code each).
+
+    Several prints with different shapes cover more of the bed than one rectangle,
+    which is what lets the higher-order ``poly2``/``poly3`` models generalise.
+    Accuracy is reported leave-one-video-out (LOVO): each print is predicted by a
+    mapping fitted on the *other* prints only, then re-registered in time with that
+    mapping, exactly as ``compare`` would do for a new video.
+    """
+    from scipy.spatial import cKDTree
+
+    items = []
+    for track_csv, gcode in pairs:
+        track = load_track(track_csv)
+        tl = load_timeline(gcode)
+        dense = DenseTimeline(tl)
+        items.append(dict(track_csv=str(track_csv), gcode=str(gcode), track=track, tl=tl, dense=dense,
+                          reg=register(track, dense, mapper=None)))
+
+    def fit_on(subset_items):
+        obs, tgt = [], []
+        for it in subset_items:
+            o, t, _ = _windowed(it["track"], it["dense"], it["reg"])
+            obs.append(o); tgt.append(t)
+        cat = {k: np.concatenate([o[k] for o in obs]) for k in obs[0]}
+        cx, cy = mapping.fit(cat, np.vstack(tgt), model)
+        return cx, cy, cat, np.vstack(tgt)
+
+    for _ in range(iterations):  # alternate: fit mapping on all prints, re-register each print in time
+        cx, cy, _, _ = fit_on(items)
+        mapper = mapping.BedMapper(mapping.to_json(cx, cy, model, 810.0, {}))
+        for it in items:
+            refined = _register_with(it["track"], it["dense"], mapper, (it["reg"]["offset"], it["reg"]["scale"]))
+            if abs(refined["offset"] - it["reg"]["offset"]) < 2.0:
+                it["reg"].update(offset=refined["offset"], scale=refined["scale"])
+
+    per_print, lovo_err = [], []
+    for i, it in enumerate(items):
+        others = [o for j, o in enumerate(items) if j != i]
+        cx_o, cy_o, cat_o, _ = fit_on(others)
+        m_o = mapping.BedMapper(mapping.to_json(cx_o, cy_o, model, 810.0,
+                                                {"feature_bounds": mapping.feature_bounds(cat_o)}))
+        reg = _register_with(it["track"], it["dense"], m_o, (it["reg"]["offset"], it["reg"]["scale"]))
+        o, t, ext = _windowed(it["track"], it["dense"], reg)
+        pred = m_o(o)
+        e = np.linalg.norm(pred - t, axis=1)
+        poly = it["tl"].polyline(extruding_only=True, step_mm=0.25)
+        dev = cKDTree(poly).query(pred[ext])[0]
+        lovo_err.append(e)
+        per_print.append({
+            "track": it["track_csv"], "gcode": it["gcode"],
+            "print_start_video_s": it["reg"]["offset"], "time_scale": it["reg"]["scale"],
+            "lovo_time_aligned_rmse_mm": float(np.sqrt(np.mean(e ** 2))),
+            "lovo_path_deviation_p95_mm": float(np.percentile(dev, 95)),
+            "lovo_within_2mm_pct": float(np.mean(dev <= 2) * 100),
+            "lovo_within_5mm_pct": float(np.mean(dev <= 5) * 100),
+            "lovo_extrapolated_fraction": float(np.mean(mapping.extrapolated(o, m_o.bounds))),
+        })
+    cx, cy, cat, tgt = fit_on(items)
+    fit_err = np.linalg.norm(mapping.apply(cx, cy, cat, model) - tgt, axis=1)
+    all_lovo = np.concatenate(lovo_err)
+    cal = mapping.to_json(cx, cy, model, 810.0, {
+        "method": "multi-print calibration: head-box mapping fitted against several G-code-timed trusted prints",
+        "calibration_prints": per_print,
+        "samples": int(len(tgt)),
+        "fit_rmse_mm": float(np.sqrt(np.mean(fit_err ** 2))),
+        "holdout_rmse_mm": float(np.sqrt(np.mean(all_lovo ** 2))),
+        "holdout_note": "leave-one-video-out: each print predicted by a mapping fitted on the other prints",
+        "feature_bounds": mapping.feature_bounds(cat),
+        "training_bounds_mm": {"x": [float(tgt[:, 0].min()), float(tgt[:, 0].max())],
+                               "y": [float(tgt[:, 1].min()), float(tgt[:, 1].max())]},
+        "valid_z_mm": "first layer only (bed height at calibration); re-calibrate or model Z for other layers",
+    })
+    Path(output_json).parent.mkdir(parents=True, exist_ok=True)
+    Path(output_json).write_text(json.dumps(cal, indent=2) + "\n")
+    return cal
+
+
 # --------------------------------------------------------------------------- metrics
 def _point_to_polyline(points, poly):
     """Distance from each point to the nearest densely-sampled polyline vertex."""
@@ -132,6 +224,7 @@ def compare(track_csv, gcode, calibration, output_dir=None, video=None, toleranc
         "reference_covered_fraction": float(np.mean(d_ref_to_obs <= tolerance_mm)) if len(obs_print) else 0.0,
         "hausdorff_mm": float(max(np.nanmax(d_obs_to_ref), np.nanmax(d_ref_to_obs))) if len(obs_print) else None,
         "tolerance_mm": tolerance_mm,
+        "extrapolated_fraction": float(np.mean(mapping.extrapolated(mapping.subset(track, sel), mapper.bounds))),
     }
     ok = (metrics["path_deviation_p95_mm"] is not None and metrics["path_deviation_p95_mm"] <= tolerance_mm
           and metrics["reference_covered_fraction"] >= 0.9)

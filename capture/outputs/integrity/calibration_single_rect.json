@@ -1,0 +1,44 @@
+{
+  "version": 2,
+  "coordinate_space": "bed_mm",
+  "coordinate_model": "calibrated_side_xy",
+  "mapping_model": "pinhole_plus",
+  "image_center_x_px": 810.0,
+  "method": "head-box pinhole mapping fitted against a G-code-timed calibration print",
+  "x_coefficients": [
+    111.77215245428623,
+    -112645.94530714967,
+    151.60620413870552,
+    -3.328089107819571
+  ],
+  "y_coefficients": [
+    -588813.8215522912,
+    10618.49403787277,
+    92.21720875000923,
+    22.491490309796422,
+    -7.353638920376194,
+    -0.6832184951358975,
+    1992.1912758311532
+  ],
+  "depth_axis": "Y",
+  "horizontal_axis": "X",
+  "calibration_video_track": "outputs/integrity/tracks/v0521.csv",
+  "calibration_gcode": "inputs/gcode/rectangle/model.gcode",
+  "print_start_video_s": 367.19990488021045,
+  "time_scale_video_per_gcode_s": 0.9899999999999998,
+  "samples": 535,
+  "fit_rmse_mm": 3.367524661600364,
+  "holdout_rmse_mm": 4.119111794301451,
+  "holdout_note": "alternate 1s blocks: fit on even blocks, tested on odd blocks",
+  "training_bounds_mm": {
+    "x": [
+      35.064,
+      194.93199443486498
+    ],
+    "y": [
+      15.064,
+      179.8652387401287
+    ]
+  },
+  "valid_z_mm": "first layer only (bed height at calibration); re-calibrate or model Z for other layers"
+}

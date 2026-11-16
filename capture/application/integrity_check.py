@@ -38,7 +38,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from backend.integrity.compare import calibrate, compare  # noqa: E402
+from backend.integrity.compare import calibrate, calibrate_multi, compare  # noqa: E402
+from backend.integrity.mapping import MODELS  # noqa: E402
 from backend.integrity.track import track_two_stage  # noqa: E402
 
 DEFAULT_MODEL = ROOT / "assets" / "models" / "printer_head" / "best.pt"
@@ -58,9 +59,19 @@ def cmd_track(a):
 
 
 def cmd_calibrate(a):
-    cal = calibrate(a.track, a.gcode, a.output, model=a.mapping_model)
+    if len(a.track) != len(a.gcode):
+        raise SystemExit("give one --gcode per --track")
+    if len(a.track) == 1:
+        cal = calibrate(a.track[0], a.gcode[0], a.output, model=a.mapping_model or "pinhole_plus")
+    else:
+        cal = calibrate_multi(list(zip(a.track, a.gcode)), a.output, model=a.mapping_model or "poly3")
+        for p in cal["calibration_prints"]:
+            print(f"  LOVO {Path(p['track']).name:28s} RMSE {p['lovo_time_aligned_rmse_mm']:.2f} mm, "
+                  f"p95 {p['lovo_path_deviation_p95_mm']:.2f} mm, extrapolated {p['lovo_extrapolated_fraction']:.0%}")
     print(f"Calibration written: {a.output}")
-    print(f"  print found at video t = {cal['print_start_video_s']:.2f} s, time scale {cal['time_scale_video_per_gcode_s']:.3f}")
+    if "print_start_video_s" in cal:
+        print(f"  print found at video t = {cal['print_start_video_s']:.2f} s, "
+              f"time scale {cal['time_scale_video_per_gcode_s']:.3f}")
     print(f"  fit RMSE {cal['fit_rmse_mm']:.2f} mm, held-out RMSE {cal['holdout_rmse_mm']:.2f} mm "
           f"({cal['holdout_note']})")
 
@@ -144,10 +155,12 @@ def main(argv=None):
     s.set_defaults(func=cmd_track)
 
     s = sub.add_parser("calibrate", help="Fit camera->bed mapping from a known print")
-    s.add_argument("--track", required=True, type=Path)
-    s.add_argument("--gcode", required=True, type=Path)
+    s.add_argument("--track", required=True, type=Path, action="append",
+                   help="repeat --track/--gcode pairs to calibrate from several trusted prints")
+    s.add_argument("--gcode", required=True, type=Path, action="append")
     s.add_argument("--output", required=True, type=Path)
-    s.add_argument("--mapping-model", default="pinhole_plus", choices=["pinhole", "pinhole_yaw", "pinhole_plus"])
+    s.add_argument("--mapping-model", default=None, choices=list(MODELS),
+                   help="default pinhole_plus for one print, poly3 for several")
     s.set_defaults(func=cmd_calibrate)
 
     for name, func in (("compare", cmd_compare), ("run", cmd_run)):
